@@ -93,9 +93,11 @@ Aether spans **this** space — not the whole software stack:
 **Local development** is expected against a checkout such as `../aura-grok` (or upstream Aura):
 
 ```bash
-# example once examples exist
-echo '(load "examples/01-single-loop/main.aura")' | ../aura-grok/build/aura
+./scripts/run-aura.sh examples/01-single-loop/main.aura
+# expects: PASS: O→D→M→V→R closed loop (commit + skip + rollback)
 ```
+
+`scripts/run-aura.sh` sets `AURA_PATH` (Aura `lib/` + Aether `lib/`), `AURA_SANDBOX=off` (CLI mutation demos), and `AURA_PIPELINE_STRICT=0` when needed.
 
 Aether should **compose** Aura surfaces, not fork engine code.
 
@@ -121,30 +123,28 @@ P \approx A \oplus E, \quad A \in V_A
 - Mutation only via unguarded string patches → isomorphism failure  
 - Multi-agent only via external queue/orchestrator → axis C uncovered  
 
-## Project structure (planned)
+## Project structure
 
 ```
 aether/
 ├── README.md
 ├── LICENSE
+├── scripts/
+│   └── run-aura.sh          # Host Aura runner (AURA_PATH, sandbox)
 ├── prompts/
 │   └── GROK.md              # Living prompt for continued generation
 ├── lib/
-│   ├── loop/                # Axis A — standard closed-loop skeleton
-│   ├── mutate-policy/       # Axis B — what may mutate, how to batch/verify
-│   ├── orch/                # Axis C — roles, arbitration, shared mut policy
-│   ├── adapt/               # Axis D — hot strategy, versions, heal, freeze
-│   ├── boundary/            # Axis E — LLM/tool/IO + escape accounting
-│   └── measure/             # Axis F — rates, loop stats, denseness report
+│   └── aether-min.aura      # Staged reusable A+B+F helpers (experimental)
 ├── examples/
-│   ├── 01-single-loop/      # Minimal pure-Aura closed loop (no LLM required)
-│   ├── 02-researcher-executor/
-│   ├── 03-hot-strategy-heal/
-│   └── 04-long-run-denseness/
+│   └── 01-single-loop/      # Runnable denseness probe (canonical)
+│       ├── main.aura
+│       └── README.md
 └── notes/
     ├── escape-log.md        # Every necessary escape
-    └── denseness-report.md  # Aggregated θ, ρ, conclusions
+    └── denseness-report.md  # (planned) Aggregated θ, ρ, conclusions
 ```
+
+Planned later: `lib/{loop,mutate-policy,orch,adapt,boundary,measure}/` and examples 02–05.
 
 ## Span order (execution path)
 
@@ -175,7 +175,9 @@ Apache License 2.0 (same as Aura)
 
 ## Status
 
-Early construction — scope and denseness criteria locked; implementation skeleton pending.
+Scope and denseness criteria locked. **Example 01** is runnable:
 
-First concrete deliverable: **example 01** — a minimal self-evolving Agent closed-loop
-that can observe, decide, mutate under guards, verify, and roll back, mostly in pure Aura.
+- Observe wrong self-logic → safe `mutate:rebind` → business verify → commit  
+- Skip when already correct  
+- Bad proposal → verify fail → `ast:restore` rollback  
+- Zero escapes in the evolvable core (see `examples/01-single-loop/`)

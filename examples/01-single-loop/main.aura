@@ -1,0 +1,179 @@
+; examples/01-single-loop/main.aura
+;
+; Phase 1 denseness probe — minimal self-evolving closed loop (no LLM).
+; Linear script (no multi-step helper closures) for aura-grok CLI stability.
+;
+; O→D→M→V→R:
+;   R1 commit: double → triple under mutate:rebind + verify
+;   R2 skip: already correct
+;   R3 rollback: bad rebind fails verify → ast:restore
+;
+; Run: ./scripts/run-aura.sh examples/01-single-loop/main.aura
+
+(require "std/mutate" all:)
+
+(display "=== Aether 01-single-loop: self-evolving closed loop ===")
+(newline)
+
+; Seed subject
+(set-code "(define score (lambda (x) (* x 2)))")
+(eval-current)
+
+(display "installed score = double; goal = triple")
+(newline)
+(display "R1 observe score(7)=")
+(display (score 7))
+(display " (want 21)")
+(newline)
+
+; Counters (list-boxes)
+(define n-rounds (list 0))
+(define n-commits (list 0))
+(define n-rollbacks (list 0))
+(define n-skip (list 0))
+(define n-verify-fail (list 0))
+
+; ═══════════════ Round 1: Observe → Decide → Mutate → Verify → Commit ═══════════════
+(set-car! n-rounds (+ (car n-rounds) 1))
+(define need1 (not (= (score 7) 21)))
+(define r1-decision "refuse")
+
+(if need1
+  (begin
+    (define snap1 (ast:snapshot "r1-to-triple"))
+    (try (mutate:safe-yield) (catch (e) #f))
+    (define mut1 (mutate:rebind "score" "(lambda (x) (* x 3))" "r1-to-triple"))
+    (if (eq? mut1 #t)
+      (begin
+        (eval-current)
+        (if (= (score 7) 21)
+          (begin
+            (set-car! n-commits (+ (car n-commits) 1))
+            (set! r1-decision "commit"))
+          (begin
+            (set-car! n-verify-fail (+ (car n-verify-fail) 1))
+            (set-car! n-rollbacks (+ (car n-rollbacks) 1))
+            (ast:restore snap1)
+            (eval-current)
+            (set! r1-decision "rollback"))))
+      (begin
+        (set-car! n-rollbacks (+ (car n-rollbacks) 1))
+        (set! r1-decision "refuse"))))
+  (begin
+    (set-car! n-skip (+ (car n-skip) 1))
+    (set! r1-decision "skip")))
+
+(display "R1 decision=")
+(display r1-decision)
+(display " score(7)=")
+(display (score 7))
+(newline)
+
+; ═══════════════ Round 2: already correct → skip ═══════════════
+(set-car! n-rounds (+ (car n-rounds) 1))
+(define need2 (not (= (score 7) 21)))
+(define r2-decision "refuse")
+
+(if need2
+  (begin
+    (define snap2 (ast:snapshot "r2"))
+    (define mut2 (mutate:rebind "score" "(lambda (x) (* x 3))" "r2"))
+    (if (eq? mut2 #t)
+      (begin
+        (eval-current)
+        (if (= (score 7) 21)
+          (begin
+            (set-car! n-commits (+ (car n-commits) 1))
+            (set! r2-decision "commit"))
+          (begin
+            (set-car! n-verify-fail (+ (car n-verify-fail) 1))
+            (set-car! n-rollbacks (+ (car n-rollbacks) 1))
+            (ast:restore snap2)
+            (eval-current)
+            (set! r2-decision "rollback"))))
+      (set! r2-decision "refuse")))
+  (begin
+    (set-car! n-skip (+ (car n-skip) 1))
+    (set! r2-decision "skip")))
+
+(display "R2 decision=")
+(display r2-decision)
+(display " score(7)=")
+(display (score 7))
+(newline)
+
+; ═══════════════ Round 3: bad proposal → verify fail → rollback ═══════════════
+(set-car! n-rounds (+ (car n-rounds) 1))
+(define snap3 (ast:snapshot "r3-bad"))
+(try (mutate:safe-yield) (catch (e) #f))
+(define mut3 (mutate:rebind "score" "(lambda (x) (* x 99))" "r3-bad"))
+(define r3-decision "refuse")
+(define score-mid 0)
+
+(if (eq? mut3 #t)
+  (begin
+    (eval-current)
+    (set! score-mid (score 7))
+    (if (= (score 7) 21)
+      (begin
+        (set-car! n-commits (+ (car n-commits) 1))
+        (set! r3-decision "commit"))
+      (begin
+        (set-car! n-verify-fail (+ (car n-verify-fail) 1))
+        (set-car! n-rollbacks (+ (car n-rollbacks) 1))
+        (ast:restore snap3)
+        (eval-current)
+        (set! r3-decision "rollback"))))
+  (begin
+    (set-car! n-rollbacks (+ (car n-rollbacks) 1))
+    (set! r3-decision "refuse")))
+
+(display "R3 decision=")
+(display r3-decision)
+(display " mid-score=")
+(display score-mid)
+(display " after-score=")
+(display (score 7))
+(newline)
+
+(display "stats rounds=")
+(display (car n-rounds))
+(display " commits=")
+(display (car n-commits))
+(display " rollbacks=")
+(display (car n-rollbacks))
+(display " skip=")
+(display (car n-skip))
+(display " verify-fail=")
+(display (car n-verify-fail))
+(newline)
+
+(define all-ok
+  (and (= (score 7) 21)
+       (equal? r1-decision "commit")
+       (equal? r2-decision "skip")
+       (equal? r3-decision "rollback")
+       (= (car n-commits) 1)
+       (>= (car n-rollbacks) 1)
+       (>= (car n-skip) 1)
+       (= (car n-rounds) 3)
+       (not (= score-mid 21))))
+
+(if all-ok
+  (begin
+    (display "PASS: O→D→M→V→R closed loop (commit + skip + rollback)")
+    (newline)
+    (display "escapes: 0 in evolvable core (pure Aura on host stdlib)")
+    (newline))
+  (begin
+    (display "FAIL: closed-loop checks did not all pass")
+    (newline)
+    (display "  r1=")
+    (display r1-decision)
+    (display " r2=")
+    (display r2-decision)
+    (display " r3=")
+    (display r3-decision)
+    (display " score=")
+    (display (score 7))
+    (newline)))
