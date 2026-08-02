@@ -1,10 +1,7 @@
 # Offline denseness suite + structure checks.
 #
-# Structure job always runs (no Aura binary).
-# Denseness job runs when Aura is available via:
-#   - repo variable/secrets, or
-#   - sibling checkout of cybrid-systems/aura (same org; needs permissions), or
-#   - self-hosted runner with AURA_BIN preinstalled.
+# structure  — always runs on ubuntu-latest (no Aura binary).
+# denseness  — builds Aura in org CI image (CMake 4.3+) then runs report.sh.
 name: denseness
 
 on:
@@ -12,6 +9,10 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
 
 jobs:
   structure:
@@ -24,65 +25,63 @@ jobs:
   denseness:
     runs-on: ubuntu-latest
     needs: structure
-    # Skip gracefully when Aura cannot be obtained (fork PRs without access).
-    continue-on-error: false
+    timeout-minutes: 120
+    # Same toolchain image as Aura nightly (CMake 4.3+, Ninja, clang).
+    container:
+      image: ghcr.io/cybrid-systems/dev:v1.0.5
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout aether
+        uses: actions/checkout@v4
         with:
           path: aether
 
-      - name: Checkout Aura (stdlib + sources)
-        id: aura
-        continue-on-error: true
+      - name: Checkout aura
         uses: actions/checkout@v4
         with:
           repository: cybrid-systems/aura
           path: aura
-          # Same-org token works for private aura when GITHUB_TOKEN has access;
-          # forks may fail — denseness then reports skip via next step.
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Locate or build Aura binary
-        id: bin
-        working-directory: aether
+      - name: Install Aura Python CI deps
+        working-directory: aura
         run: |
           set -euo pipefail
-          if [[ -x "${{ github.workspace }}/aura/build/aura" ]]; then
-            echo "AURA_BIN=${{ github.workspace }}/aura/build/aura" >> "$GITHUB_ENV"
-            echo "AURA_LIB=${{ github.workspace }}/aura/lib" >> "$GITHUB_ENV"
-            echo "found=1" >> "$GITHUB_OUTPUT"
-            exit 0
+          if [[ -f requirements-dev.txt ]]; then
+            pip install --break-system-packages -r requirements-dev.txt \
+              || pip install -r requirements-dev.txt
           fi
-          if [[ -d "${{ github.workspace }}/aura" && -f "${{ github.workspace }}/aura/CMakeLists.txt" ]]; then
-            echo "Building Aura (Release)…"
-            cmake -S "${{ github.workspace }}/aura" -B "${{ github.workspace }}/aura/build" -DCMAKE_BUILD_TYPE=Release
-            cmake --build "${{ github.workspace }}/aura/build" -j"$(nproc)" --target aura || \
-              cmake --build "${{ github.workspace }}/aura/build" -j"$(nproc)"
-            if [[ -x "${{ github.workspace }}/aura/build/aura" ]]; then
-              echo "AURA_BIN=${{ github.workspace }}/aura/build/aura" >> "$GITHUB_ENV"
-              echo "AURA_LIB=${{ github.workspace }}/aura/lib" >> "$GITHUB_ENV"
-              echo "found=1" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
-          echo "found=0" >> "$GITHUB_OUTPUT"
-          echo "::warning::Aura binary not available; denseness suite skipped (structure already passed)."
+
+      - name: Build Aura binary
+        working-directory: aura
+        run: |
+          set -euo pipefail
+          python3 build.py build
+          test -x build/aura
+          # Shared modules (e.g. libaura-reflect.so) live next to the binary.
+          ls -la build/aura build/*.so 2>/dev/null || true
 
       - name: Run denseness report
-        if: steps.bin.outputs.found == '1'
         working-directory: aether
         env:
-          AURA_BIN: ${{ env.AURA_BIN }}
-          AURA_LIB: ${{ env.AURA_LIB }}
+          AURA_BIN: ${{ github.workspace }}/aura/build/aura
+          AURA_LIB: ${{ github.workspace }}/aura/lib
+          # Ensure rpath/shared libs resolve on the runner.
+          LD_LIBRARY_PATH: ${{ github.workspace }}/aura/build
         run: |
           set -euo pipefail
           chmod +x scripts/*.sh
+          test -x "$AURA_BIN"
+          test -d "$AURA_LIB/std"
           ./scripts/report.sh
           test -f notes/last-run-report.md
           grep -q 'ALL PASSED' notes/last-run-report.md
+          tail -n 20 notes/last-run-report.md
 
       - name: Upload last-run-report
-        if: steps.bin.outputs.found == '1' && always()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: last-run-report
