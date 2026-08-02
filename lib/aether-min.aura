@@ -1,10 +1,15 @@
-; lib/aether-min.aura — Phase-1 Aether surface (Axes A + B + F)
+; lib/aether-min.aura — Closed-loop surface (Axes A + B + F)
 ;
 ; (require "aether-min" all:)
-; AURA_PATH must include aura lib/ and this aether lib/.
 ;
-; Canonical loop:
-;   Observe → Decide → Safe Mutation → Verify → Rollback (if needed)
+; Layout after axis split:
+;   aether-measure         Axis F (narrow / pre-rebind; see file note)
+;   aether-mutate-policy   Axis B — required + re-exported here
+;   aether-loop            Axis A O/D/V helpers (narrow)
+;   aether-min             embeds F + loop-once + re-exports B
+;                          (host: post-rebind free-vars must be same-module
+;                          for stats + loop-once; do not require measure
+;                          for the live closed-loop path)
 ;
 ; Host fixes used: #2566 #2567 #2568 #2569 #2570
 
@@ -17,14 +22,11 @@
 
 (require "std/list" all:)
 (require "std/mutate" all:)
+(require "aether-mutate-policy" all:)
 
-(define aether:min-version 1)
+(define aether:min-version 2)
 
-(define (aether:install-source source)
-  (set-code source)
-  (try (begin (eval-current) #t) (catch (e) #f)))
-
-; ── Axis F: metrology (hash, ≤8 keys) ────────────────────────
+; ── Axis F embedded (same-module as loop-once) ───────────────
 
 (define *aether-stats*
   (hash "rounds" 0
@@ -69,8 +71,6 @@
         (cons "decide-skip" (aether:stats-ref "decide-skip"))
         (cons "escapes" (aether:stats-ref "escapes"))))
 
-; ── Axis B: mutation policy ──────────────────────────────────
-
 (define (aether:alist-ref key lst default)
   (let ((xs lst))
     (let loop ((ys xs))
@@ -78,55 +78,7 @@
             ((equal? (car (car ys)) key) (cdr (car ys)))
             (else (loop (cdr ys)))))))
 
-(define (aether:safety-ok?)
-  (try
-    (and (mutate:boundary-safe?) (mutate:quota-ok?))
-    (catch (e) #f)))
-
-(define (aether:snapshot tag)
-  (try
-    (let ((id (ast:snapshot tag)))
-      (if (number? id) id -1))
-    (catch (e) -1)))
-
-(define (aether:restore snap-id)
-  (if (and (number? snap-id) (>= snap-id 0))
-    (try
-      (begin
-        (ast:restore snap-id)
-        (try (eval-current) (catch (e) #f))
-        #t)
-      (catch (e) #f))
-    #f))
-
-(define (aether:rebind-safe name body summary)
-  (if (not (aether:safety-ok?))
-    (list (cons ":ok" #f)
-          (cons ":snap" -1)
-          (cons ":mut-ok" #f)
-          (cons ":reason" "boundary-or-quota"))
-    (let ((snap (aether:snapshot summary)))
-      (try (mutate:safe-yield) (catch (e) #f))
-      (let ((mut-res (try (mutate:rebind name body summary) (catch (e) #f))))
-        (if (eq? mut-res #t)
-          (let ((ev-ok (try (begin (eval-current) #t) (catch (e) #f))))
-            (if ev-ok
-              (list (cons ":ok" #t)
-                    (cons ":snap" snap)
-                    (cons ":mut-ok" #t)
-                    (cons ":reason" "applied"))
-              (begin
-                (aether:restore snap)
-                (list (cons ":ok" #f)
-                      (cons ":snap" snap)
-                      (cons ":mut-ok" #t)
-                      (cons ":reason" "eval-failed")))))
-          (list (cons ":ok" #f)
-                (cons ":snap" snap)
-                (cons ":mut-ok" #f)
-                (cons ":reason" "rebind-failed")))))))
-
-; ── Axis A: closed loop ──────────────────────────────────────
+; ── Axis A embedded ──────────────────────────────────────────
 
 (define (aether:observe probe)
   (aether:stats-bump! "observe-calls")
@@ -140,39 +92,43 @@
 (define (aether:verify check)
   (try (eq? (check) #t) (catch (e) #f)))
 
-; Split helpers so loop-once body stays small (host module size sensitivity).
-(define (aether-result ok decision obs reason snap)
-  (list (cons ":ok" ok)
-        (cons ":decision" decision)
-        (cons ":observation" obs)
-        (cons ":reason" reason)
-        (cons ":snap" snap)))
-
-(define (aether-after-mut obs mut verify-check)
-  (if (not (aether:alist-ref ":ok" mut #f))
-    (begin
-      (aether:stats-bump! "rollbacks")
-      (aether-result #f 'refuse obs
-                     (aether:alist-ref ":reason" mut "refuse")
-                     (aether:alist-ref ":snap" mut -1)))
-    (let ((snap (aether:alist-ref ":snap" mut -1)))
-      (let ((raw (try (verify-check) (catch (e) #f))))
-        (if (eq? raw #t)
-          (begin
-            (aether:stats-bump! "commits")
-            (aether-result #t 'commit obs "verified" snap))
-          (begin
-            (aether:stats-bump! "verify-fail")
-            (aether:stats-bump! "rollbacks")
-            (aether:restore snap)
-            (aether-result #f 'rollback obs "verify-failed" snap)))))))
-
 (define (aether:loop-once observe-probe need-mutate? name body summary verify-check)
   (aether:stats-bump! "rounds")
   (let ((obs (aether:observe observe-probe)))
     (let ((dec (aether:decide need-mutate?)))
       (if (eq? dec 'skip)
-        (aether-result #t 'skip obs "no-mutate-needed" -1)
-        (aether-after-mut obs
-                          (aether:rebind-safe name body summary)
-                          verify-check)))))
+        (list (cons ":ok" #t)
+              (cons ":decision" 'skip)
+              (cons ":observation" obs)
+              (cons ":reason" "no-mutate-needed")
+              (cons ":snap" -1))
+        (let ((mut (aether:rebind-safe name body summary)))
+          (let ((mut-ok (aether:alist-ref ":ok" mut #f)))
+            (let ((snap (aether:alist-ref ":snap" mut -1)))
+              (let ((mreason (aether:alist-ref ":reason" mut "refuse")))
+                (if (not mut-ok)
+                  (begin
+                    (aether:stats-bump! "rollbacks")
+                    (list (cons ":ok" #f)
+                          (cons ":decision" 'refuse)
+                          (cons ":observation" obs)
+                          (cons ":reason" mreason)
+                          (cons ":snap" snap)))
+                  (let ((raw (try (verify-check) (catch (e) #f))))
+                    (if (eq? raw #t)
+                      (begin
+                        (aether:stats-bump! "commits")
+                        (list (cons ":ok" #t)
+                              (cons ":decision" 'commit)
+                              (cons ":observation" obs)
+                              (cons ":reason" "verified")
+                              (cons ":snap" snap)))
+                      (begin
+                        (aether:stats-bump! "verify-fail")
+                        (aether:stats-bump! "rollbacks")
+                        (aether:restore snap)
+                        (list (cons ":ok" #f)
+                              (cons ":decision" 'rollback)
+                              (cons ":observation" obs)
+                              (cons ":reason" "verify-failed")
+                              (cons ":snap" snap)))))))))))))))

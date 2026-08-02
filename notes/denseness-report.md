@@ -76,11 +76,16 @@ core escapes and recoverable failure paths.
 This does **not** claim denseness over all of \(S_{\mathrm{practical}}\)
 (numerical hot paths, hard realtime, drivers, etc.).
 
-## Library factoring (post Phase 1–2)
+## Library factoring (post Phase 1–2 / Phase 3)
 
-- **`aether-domain`** — shared admit-gate workload (1..10, fails≤4) used by probes 02–03, 05–09 so examples no longer copy-paste batch/fail helpers.
-- **`aether-propose`** — schema + wire parse + rule/stub/live propose; string/schema helpers **inlined** into public entry points so free-vars survive workspace rebind (host free-var breakage across mutate).
-- **`aether-orch`** — multi-proposer filter + score + pick (`aether:arbitrate`); deny-all dropped; healthy prefers skip; unhealthy prefers widen. Fully inlined public entry (same rebind free-var discipline). Also `aether:fanout-with-yield` — cooperative multi-propose with `mutate:safe-yield` before/after each worker (mode `sequential-yield`).
+- **`aether-domain`** — shared admit-gate workload (1..10, fails≤4) used by probes 02–03, 05–12.
+- **`aether-propose`** — schema + wire parse + rule/stub/live propose; public entries inlined for rebind free-var survival.
+- **`aether-orch`** — `aether:arbitrate` + `aether:fanout-with-yield` (sequential-yield).
+- **Axis split of former monolithic `aether-min`:**
+  - `aether-mutate-policy` — Axis B (install / safety / rebind)
+  - `aether-measure` / `aether-loop` — Axis F / A **narrow** surfaces (pre-rebind / helpers)
+  - `aether-min` — still the denseness closed-loop facade: **embeds** stats + `loop-once` (same-module) and re-exports B  
+  - **Host residual:** cross-module free-vars / private cells break after `set-code`+rebind; embedding A+F in `aether-min` is required for PASS-path metrology, not a denseness failure of \(S_{\mathrm{Aether}}\).
 
 ## Host residual (Axis C parallel)
 
@@ -93,5 +98,5 @@ This does **not** claim denseness over all of \(S_{\mathrm{practical}}\)
 ## Next measurements
 
 - N=100+ optional if product needs longer soak; multi-tenant region isolation if needed.
-- Split `aether-min` into axis modules once host module packaging is fully stable.
 - Re-try true fiber parallel when host closure capture is fixed.
+- Move embedded A+F out of `aether-min` only when host same-module free-var rule is fixed.

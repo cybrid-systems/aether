@@ -134,10 +134,14 @@ aether/
 ├── prompts/
 │   └── GROK.md              # Living prompt for continued generation
 ├── lib/
-│   ├── aether-min.aura         # A+B+F closed-loop surface
+│   ├── aether-min.aura         # A+B+F closed-loop facade (embeds A+F)
+│   ├── aether-mutate-policy.aura  # Axis B
+│   ├── aether-measure.aura     # Axis F (narrow / pre-rebind)
+│   ├── aether-loop.aura        # Axis A O/D/V helpers
 │   ├── aether-propose.aura     # Propose edge (rule / stub / live)
-│   ├── aether-domain.aura      # Shared gate workload (02–11)
-│   └── aether-orch.aura        # Multi-propose arbiter + yield fanout (C)
+│   ├── aether-domain.aura      # Shared gate workload
+│   ├── aether-orch.aura        # Multi-propose arbiter + yield fanout (C)
+│   └── README.md               # Lib map + host packaging notes
 ├── examples/
 │   ├── _template/              # Copy to add a new probe
 │   ├── README.md               # Probe index + conventions

@@ -1,0 +1,70 @@
+; lib/aether-measure.aura — Axis F surface (documentation / narrow pre-rebind use)
+;
+; (require "aether-measure" all:)
+;
+; NOTE: For closed-loop work that mutates the workspace, prefer
+; (require "aether-min" all:) — host free-vars for module-private stats
+; state break across set-code/rebind when stats live in a *separate* module.
+; aether-min embeds Axis F so post-rebind metrology stays dense in V_A.
+;
+; This module remains for axis-shaped imports in tools that only observe
+; before any install-source / rebind.
+
+(export aether:stats
+        aether:stats-reset!
+        aether:stats-ref
+        aether:stats-bump!
+        aether:stats-alist
+        aether:alist-ref)
+
+(require "std/list" all:)
+
+(define *aether-stats*
+  (hash "rounds" 0
+        "commits" 0
+        "rollbacks" 0
+        "verify-fail" 0
+        "observe-calls" 0
+        "decide-mutate" 0
+        "decide-skip" 0
+        "escapes" 0))
+
+(define (aether:stats)
+  *aether-stats*)
+
+(define (aether:stats-reset!)
+  (hash-set! *aether-stats* "rounds" 0)
+  (hash-set! *aether-stats* "commits" 0)
+  (hash-set! *aether-stats* "rollbacks" 0)
+  (hash-set! *aether-stats* "verify-fail" 0)
+  (hash-set! *aether-stats* "observe-calls" 0)
+  (hash-set! *aether-stats* "decide-mutate" 0)
+  (hash-set! *aether-stats* "decide-skip" 0)
+  (hash-set! *aether-stats* "escapes" 0)
+  *aether-stats*)
+
+(define (aether:stats-ref key)
+  (let ((v (hash-ref *aether-stats* key 0)))
+    (if (number? v) v 0)))
+
+(define (aether:stats-bump! key)
+  (let ((n (+ 1 (aether:stats-ref key))))
+    (hash-set! *aether-stats* key n)
+    n))
+
+(define (aether:stats-alist)
+  (list (cons "rounds" (aether:stats-ref "rounds"))
+        (cons "commits" (aether:stats-ref "commits"))
+        (cons "rollbacks" (aether:stats-ref "rollbacks"))
+        (cons "verify-fail" (aether:stats-ref "verify-fail"))
+        (cons "observe-calls" (aether:stats-ref "observe-calls"))
+        (cons "decide-mutate" (aether:stats-ref "decide-mutate"))
+        (cons "decide-skip" (aether:stats-ref "decide-skip"))
+        (cons "escapes" (aether:stats-ref "escapes"))))
+
+(define (aether:alist-ref key lst default)
+  (let ((xs lst))
+    (let loop ((ys xs))
+      (cond ((null? ys) default)
+            ((equal? (car (car ys)) key) (cdr (car ys)))
+            (else (loop (cdr ys)))))))

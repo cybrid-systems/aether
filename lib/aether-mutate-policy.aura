@@ -1,0 +1,77 @@
+; lib/aether-mutate-policy.aura — Axis B: mutation policy / safety
+;
+; (require "aether-mutate-policy" all:)
+; Public entries avoid private free helpers (host free-var break across rebind).
+
+(export aether:install-source
+        aether:safety-ok?
+        aether:snapshot
+        aether:restore
+        aether:rebind-safe)
+
+(require "std/list" all:)
+(require "std/mutate" all:)
+
+(define (aether:install-source source)
+  (set-code source)
+  (try (begin (eval-current) #t) (catch (e) #f)))
+
+(define (aether:safety-ok?)
+  (try
+    (and (mutate:boundary-safe?) (mutate:quota-ok?))
+    (catch (e) #f)))
+
+(define (aether:snapshot tag)
+  (try
+    (let ((id (ast:snapshot tag)))
+      (if (number? id) id -1))
+    (catch (e) -1)))
+
+(define (aether:restore snap-id)
+  (if (and (number? snap-id) (>= snap-id 0))
+    (try
+      (begin
+        (ast:restore snap-id)
+        (try (eval-current) (catch (e) #f))
+        #t)
+      (catch (e) #f))
+    #f))
+
+; Fully inlined safety / snapshot / restore / yield (no private free helpers).
+(define (aether:rebind-safe name body summary)
+  (if (not (try (and (mutate:boundary-safe?) (mutate:quota-ok?)) (catch (e) #f)))
+    (list (cons ":ok" #f)
+          (cons ":snap" -1)
+          (cons ":mut-ok" #f)
+          (cons ":reason" "boundary-or-quota"))
+    (let ((snap
+            (try
+              (let ((id (ast:snapshot summary)))
+                (if (number? id) id -1))
+              (catch (e) -1))))
+      (try (mutate:safe-yield) (catch (e) #f))
+      (let ((mut-res (try (mutate:rebind name body summary) (catch (e) #f))))
+        (if (eq? mut-res #t)
+          (let ((ev-ok (try (begin (eval-current) #t) (catch (e) #f))))
+            (if ev-ok
+              (list (cons ":ok" #t)
+                    (cons ":snap" snap)
+                    (cons ":mut-ok" #t)
+                    (cons ":reason" "applied"))
+              (begin
+                (if (and (number? snap) (>= snap 0))
+                  (try
+                    (begin
+                      (ast:restore snap)
+                      (try (eval-current) (catch (e) #f))
+                      #t)
+                    (catch (e) #f))
+                  #f)
+                (list (cons ":ok" #f)
+                      (cons ":snap" snap)
+                      (cons ":mut-ok" #t)
+                      (cons ":reason" "eval-failed")))))
+          (list (cons ":ok" #f)
+                (cons ":snap" snap)
+                (cons ":mut-ok" #f)
+                (cons ":reason" "rebind-failed")))))))

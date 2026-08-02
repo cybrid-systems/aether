@@ -1,0 +1,26 @@
+; lib/aether-loop.aura — Axis A primitives (observe / decide / verify)
+;
+; (require "aether-loop" all:)
+;
+; aether:loop-once is defined on aether-min (embeds A+F with mutate-policy)
+; so post-rebind closed-loop free-vars stay same-module. This file exports
+; the small O/D/V helpers for axis-shaped composition.
+
+(export aether:observe
+        aether:decide
+        aether:verify)
+
+(require "std/list" all:)
+(require "aether-measure" all:)
+
+(define (aether:observe probe)
+  (aether:stats-bump! "observe-calls")
+  (try (probe) (catch (e) (list 'error e))))
+
+(define (aether:decide need-mutate?)
+  (if (need-mutate?)
+    (begin (aether:stats-bump! "decide-mutate") 'mutate)
+    (begin (aether:stats-bump! "decide-skip") 'skip)))
+
+(define (aether:verify check)
+  (try (eq? (check) #t) (catch (e) #f)))
