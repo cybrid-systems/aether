@@ -101,30 +101,32 @@ notes/denseness-report.md
 
 ## Phase plan
 
-### Phase 1–2 (landed)
+### Phase 1–3 (landed — denseness bar met)
 
-**Examples 01–09 — denseness probe suite**
+**Offline:** `01`–`08`, `10`–`13` via `./scripts/report.sh` (**12/12**).  
+**Live:** `09` MiniMax-M3 — `source ./scripts/env-minimax.sh` then run-aura.  
+**Libs:** `aether-min`, `aether-mutate-policy`, `aether-domain`, `aether-propose`,
+`aether-orch`, `aether-region` (+ narrow measure/loop).  
+**Key:** `~/code/keys/minimax`; base `https://api.minimaxi.com/v1`; model `MiniMax-M3`.  
+**Host:** Aura #2566–#2570.
 
-- `01`–`08` offline (`./scripts/run-all.sh` / `./scripts/report.sh`)  
-- `09` live MiniMax-M3: `source ./scripts/env-minimax.sh` then run-aura  
-- Libs: `aether-min`, `aether-domain` (shared gate), `aether-propose` (schema/wire/live)  
-- Key: `~/code/keys/minimax`; base `https://api.minimaxi.com/v1`; model `MiniMax-M3`  
+Success bar: evolvable core in pure Aura; full observe/rollback; honest escape log;
+business-logic escape rate ≪ 10–15%. **Met** — see `notes/denseness-report.md` judgment.
 
-Host prerequisites: Aura #2566–#2570.
+Phase highlights:
 
-Phase 1–2 success bar: majority of evolvable core in pure Aura; full observe/rollback;
-escape log honest; business-logic escape rate aimed &lt; 10–15%. Met offline 8/8 + live 09.
+| Phase | Landed |
+|-------|--------|
+| 1 | 01–03 loop / business / dual-role |
+| 2 | 04–05 hot heal + N=10 + first report |
+| 3 | 06–09 propose \(E\); 10 N=50; 11–12 orch; axis split; 13 multi-tenant; final report |
 
-### Phase 3
+### Optional later (not required for denseness claim)
 
-- **10** — longer-N denseness stress (N=50 poison/heal) — landed  
-- **11** — arbitrated multi-agent (`aether-orch`) — landed  
-- **12** — parallel+yield fanout (`aether:fanout-with-yield`) — landed  
-- Axis lib split — landed: `aether-mutate-policy` (B); `aether-measure` / `aether-loop` narrow; `aether-min` embeds A+F for post-rebind denseness  
-- **13** — multi-tenant region isolation (`aether-region`) — landed  
-- Optional next: N=100+ soak; true fiber parallel when host fixed  
+- N=100+ soak; true fiber parallel when host fixed  
+- Extract A+F from `aether-min` when cross-module free-vars survive rebind  
 
-### Later / not Aether’s job alone
+### Not Aether’s job alone
 
 Concurrency stress, numerical hot paths, hardware/OS extremes — only if required
 by a closed-loop case; otherwise leave to broader Unify span work.

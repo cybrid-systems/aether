@@ -1,6 +1,6 @@
 # Last denseness run
 
-- **When:** 2026-08-02T13:04:14Z
+- **When:** 2026-08-02T13:06:11Z
 - **Host:** `../aura-grok/build/aura` (via run-aura.sh)
 - **Passed:** 12 / 12
 - **Failed:** 0

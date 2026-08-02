@@ -1,105 +1,166 @@
-# \(S_{\mathrm{Aether}}\) denseness report (Phase 1–2)
+# \(S_{\mathrm{Aether}}\) denseness report (Phase 1–3)
 
 **Date:** 2026-08-02  
-**Host:** Aura (local `aura-grok` build) with fixes #2566–#2570  
-**Surface:** `lib/aether-min` + `aether-domain` + `aether-propose` + `aether-orch` + examples 01–11  
-**Last offline suite:** `notes/last-run-report.md`
+**Host:** Aura (local `aura-grok`) with fixes #2566–#2570  
+**Surface:** `aether-min` · `aether-mutate-policy` · `aether-domain` · `aether-propose` · `aether-orch` · `aether-region`  
+**Last offline suite:** [last-run-report.md](last-run-report.md) — **12 / 12 PASS**  
+**Live:** example 09 MiniMax-M3 (manual; needs key)
+
+---
 
 ## Claim under test
 
 On \(S_{\mathrm{Aether}}\) (long-running self-modifying agent systems), the
-evolvable core can stay in pure Aura (\(V_A\)) with controlled, metered
-escapes \(E\) on the world/propose edge only.
+**evolvable core** can stay in pure Aura (\(V_A\)) with controlled, metered
+escapes \(E\) confined to the world / propose edge.
+
+\[
+P \approx A \oplus E,\quad A \in V_A
+\]
+
+Aether does **not** claim denseness over all of \(S_{\mathrm{practical}}\).
+
+---
+
+## Axis coverage
+
+| Axis | Question | Evidence (probes) |
+|------|----------|-------------------|
+| **A** Loop completeness | Multi-round O→D→M→V→R | 01, 02, 05, 10 |
+| **B** Mutation surface | Named rebind stays safe | 01–05, 10, 13 |
+| **C** Orch topology | Dual → arbitrate → yield fanout | 03, 11, 12 |
+| **D** Temporal adaptation | Hot deploy, poison, heal | 04, 05, 10, 13 |
+| **E** World boundary | Schema / wire / stub / live LLM | 03, 06–09 |
+| **F** Metrology | Stats, report, escape log | all + `scripts/report.sh` |
+
+---
 
 ## Constructive evidence
 
-| Probe | Axes | Result | Evolvable-core escapes |
-|-------|------|--------|-------------------------|
+| Probe | Axes | Result | Core \(E\) |
+|-------|------|--------|------------|
 | [01-single-loop](../examples/01-single-loop/) | A B F | PASS commit/skip/rollback | 0 |
-| [02-business-signal](../examples/02-business-signal/) | A B F | PASS fail-rate decide (`aether-domain`) | 0 |
-| [03-researcher-executor](../examples/03-researcher-executor/) | A B C E | PASS dual-role; propose pure-Aura | 0 (LLM not required) |
+| [02-business-signal](../examples/02-business-signal/) | A B F | PASS fail-rate decide | 0 |
+| [03-researcher-executor](../examples/03-researcher-executor/) | A B C E | PASS dual-role pure-Aura propose | 0 |
 | [04-hot-strategy-heal](../examples/04-hot-strategy-heal/) | A B D F | PASS hot deploy + self-heal | 0 |
-| [05-long-run-denseness](../examples/05-long-run-denseness/) | all smoke | PASS N=10 deploy/skip/poison-heal | 0 |
-| [06-propose-edge-escape](../examples/06-propose-edge-escape/) | E | PASS rule E=0; stub E≥1; core still rolls back bad | 0 core / ≥1 propose-edge (intentional) |
+| [05-long-run-denseness](../examples/05-long-run-denseness/) | smoke | PASS N=10 deploy/skip/poison-heal | 0 |
+| [06-propose-edge-escape](../examples/06-propose-edge-escape/) | E | PASS rule E=0; stub E≥1; core guarded | 0 core |
 | [07-proposal-schema](../examples/07-proposal-schema/) | E | PASS schema refuse + semantic rollback | 0 |
-| [08-parse-proposal-wire](../examples/08-parse-proposal-wire/) | E | PASS wire parse from prose; garbage/illegal refuse | 0 core / ≥1 sim-escape |
-| [09-live-minimax](../examples/09-live-minimax/) | E | PASS MiniMax-M3 live propose (manual; needs key) | 0 core / ≥1 live HTTPS |
-| [10-long-n-stress](../examples/10-long-n-stress/) | A B D F | PASS N=50 poison/heal cadence; safety-ok | 0 |
-| [11-arbitrated-multi](../examples/11-arbitrated-multi/) | C E | PASS multi-propose + arbiter filters deny / prefers skip|widen | 0 |
-| [12-parallel-yield](../examples/12-parallel-yield/) | C | PASS fanout + yield barriers + arbiter; mutate only in executor | 0 |
-| [13-multi-tenant-region](../examples/13-multi-tenant-region/) | B D | PASS name-isolated rebind; cross-tenant metrics unchanged | 0 |
+| [08-parse-proposal-wire](../examples/08-parse-proposal-wire/) | E | PASS wire parse; garbage/illegal refuse | 0 core |
+| [09-live-minimax](../examples/09-live-minimax/) | E | PASS MiniMax-M3 live propose (manual) | 0 core / ≥1 HTTPS |
+| [10-long-n-stress](../examples/10-long-n-stress/) | A B D F | PASS N=50 poison/heal; safety-ok | 0 |
+| [11-arbitrated-multi](../examples/11-arbitrated-multi/) | C E | PASS multi-propose + arbiter | 0 |
+| [12-parallel-yield](../examples/12-parallel-yield/) | C | PASS fanout + yield + single executor | 0 |
+| [13-multi-tenant-region](../examples/13-multi-tenant-region/) | B D | PASS name-isolated multi-tenant rebind | 0 |
+
+Offline automation covers **01–08, 10–13** (12 probes). Live **09** is opt-in.
+
+---
 
 ## Metrics (practical denseness criteria)
 
 | Metric | Target | Observed on PASS paths |
 |--------|--------|-------------------------|
 | Business-logic escape rate | &lt; 10–15% | **~0%** of evolvable core |
-| Escape on decide/verify/rollback hot path | No | **None** |
+| Escape on decide/verify/rollback | No | **None** |
 | Safe-path rollback reliability | ≈100% | Bad proposals / poison recovered via snapshot or last-good |
-| Per-round observability | Full | `aether:stats-alist` + example logs |
-| Multi-round boundary health | N≥10 | Example 05 N=10; example 10 N=50; `aether:safety-ok?` at end |
+| Per-round observability | Full | `aether:stats-alist` + `RESULT` lines |
+| Multi-round boundary health | N≥10 | N=10 (05), **N=50** (10); `aether:safety-ok?` |
+| Multi-tenant isolation | No cross-talk | 13: mutate A leaves B metrics unchanged |
+| Orch without external queue | In \(V_A\) | 11–12 pure-Aura arbiter + yield fanout |
+
+---
 
 ## Escape inventory
 
 See [escape-log.md](escape-log.md).
 
-- Host config (`AURA_SANDBOX=off`, pipeline strict) is **not** counted as
-  business-logic escape.
-- Example 06 meters propose-edge \(E\): rule path keeps `escapes=0`; `llm-stub`
-  increments `escapes` while executor verify/rollback stays pure Aura.
-- Example 07 enforces a **structured proposal schema** before rebind: invalid
-  kinds/bodies never touch the workspace; schema-valid harmful bodies still
-  roll back via business verify.
-- Live LLM (`AETHER_LLM_PROPOSE=live`) calls `llm:chat` with a strict wire
-  prompt, then `aether:parse-proposal-text` + schema; invalid parse falls back
-  to rule proposal (escape still counted). Wire format:
-  `MUTATE|name|body|summary` / `SKIP|name||summary`.
+| Class | Where | Counted as core \(E\)? |
+|-------|--------|-------------------------|
+| Host CLI (`AURA_SANDBOX=off`, pipeline strict) | runner | **No** |
+| Propose-edge stub / live LLM | 06, 09 | Propose-edge only; metered |
+| Schema / wire refuse | 07, 08 | Prevents unstructured rebind |
+| Fiber / `orch:parallel` residual | host | **No** — PASS uses sequential-yield |
 
-## Gaps / residual host constraints
+Wire format (live/stub): `MUTATE|name|body|summary` or `SKIP|name||summary`.
 
-Workarounds remain for CLI ergonomics (not denseness failures of the claim):
+---
 
-- Prefer sequential `let`; multi-binding `let` can mis-bind.
-- Prefer `(eq? x #t)` for verify success.
-- Large module `define` bodies / multiline param lists can fail to export.
-- `std/orchestrator` agent callbacks did not close over `aether-min` module
-  state; dual-role uses function roles instead.
-- `std/hot-update` is AOT `.so` oriented; example 04 uses strategy rebind as
-  the Aura-native hot path.
+## Libraries (factored surface)
 
-## Judgment
+| Lib | Role |
+|-----|------|
+| `aether-min` | Closed-loop facade; embeds A+F for post-rebind metrology |
+| `aether-mutate-policy` | Axis B install / safety / rebind |
+| `aether-domain` | Shared admit-gate workload |
+| `aether-propose` | Schema, wire, rule/stub/live propose |
+| `aether-orch` | Arbitrate + fanout-with-yield |
+| `aether-region` | Multi-tenant named gates |
+| `aether-measure` / `aether-loop` | Narrow axis imports (pre-rebind) |
 
-**For the claimed subspace \(S_{\mathrm{Aether}}\) and the five constructive
-probes above, \(V_A\) is practically dense on the evolvable core:** business
-observe/decide/mutate/verify/rollback/hot-heal run in pure Aura with zero
-core escapes and recoverable failure paths.
+Details: [lib/README.md](../lib/README.md).
 
-This does **not** claim denseness over all of \(S_{\mathrm{practical}}\)
-(numerical hot paths, hard realtime, drivers, etc.).
+---
 
-## Library factoring (post Phase 1–2 / Phase 3)
+## Host residuals (not denseness failures)
 
-- **`aether-domain`** — shared admit-gate workload (1..10, fails≤4) used by probes 02–03, 05–12.
-- **`aether-propose`** — schema + wire parse + rule/stub/live propose; public entries inlined for rebind free-var survival.
-- **`aether-orch`** — `aether:arbitrate` + `aether:fanout-with-yield` (sequential-yield).
-- **Axis split of former monolithic `aether-min`:**
-  - `aether-mutate-policy` — Axis B (install / safety / rebind)
-  - `aether-measure` / `aether-loop` — Axis F / A **narrow** surfaces (pre-rebind / helpers)
-  - `aether-min` — still the denseness closed-loop facade: **embeds** stats + `loop-once` (same-module) and re-exports B  
-  - **Host residual:** cross-module free-vars / private cells break after `set-code`+rebind; embedding A+F in `aether-min` is required for PASS-path metrology, not a denseness failure of \(S_{\mathrm{Aether}}\).
+Workarounds for CLI / packaging — claim is about \(S_{\mathrm{Aether}}\) semantics, not host polish:
 
-## Host residual (Axis C parallel)
+1. Sequential `let`; multi-binding `let` can mis-bind.  
+2. Verify with `(eq? x #t)`.  
+3. Large trailing `define` in multi-export modules may fail to export.  
+4. Cross-module free-vars / private cells break after `set-code`+rebind → stats+`loop-once` stay **same-module** in `aether-min`.  
+5. `fiber:spawn` / `orch:parallel` closure and free-var issues → cooperative `sequential-yield` fanout.  
+6. `std/hot-update` AOT-oriented → strategy rebind for hot path (04).
 
-| Host path | Observation | Denseness impact |
-|-----------|-------------|------------------|
-| `fiber:spawn` multi-worker | Workers can all see last lambda (closure mis-capture) | Not used on PASS path |
-| `orch:parallel` after rebind | Free-var break (`orch-yield-safe`) inside stdlib | Not used on PASS path |
-| `aether:fanout-with-yield` | Stable yield barriers; proposers pure; single executor mutates | **PASS path** — isomorphic cooperative parallel+yield topology in \(V_A\) |
+---
 
-- **`aether-region`** — dual bindings `gate-a` / `gate-b`; `aether:region-fail-count` takes a gate *procedure* (no free-name capture); proves rebind of one region leaves the other unchanged through poison/heal.
+## Judgment (Phase 1–3)
 
-## Next measurements
+**On the claimed subspace \(S_{\mathrm{Aether}}\) and the constructive probe suite
+(12 offline + 1 live), \(V_A\) is practically dense on the evolvable core.**
 
-- N=100+ optional if product needs longer soak.
-- Re-try true fiber parallel when host closure capture is fixed.
-- Move embedded A+F out of `aether-min` only when host same-module free-var rule is fixed.
+Supporting facts:
+
+- O→D→M→V→R, business decide, hot heal, N=50 stress, multi-tenant isolation,
+  multi-propose arbitration, and yield-disciplined fanout all run in pure Aura
+  with **zero core escapes** on PASS paths.  
+- World I/O (\(E\)) is confined to the **propose edge**, schema-gated, and
+  metered; invalid proposals never rebind; bad semantics still roll back.  
+- Axis C is covered without an external queue: dual-role → arbiter → yield fanout.  
+- Host packaging limits are documented and bypassed with isomorphic pure-Aura
+  shapes (same-module stats, sequential-yield), not with FFI escapes.
+
+This **strengthens** the Aura Unify thesis at Dim 1+2. It does **not** prove
+denseness for numerical kernels, hard realtime, drivers, or arbitrary product domains.
+
+---
+
+## Phase map
+
+| Phase | Scope | Status |
+|-------|--------|--------|
+| 1 | Minimal loop, business signal, dual-role | **Landed** |
+| 2 | Hot heal, long-run N=10, first report | **Landed** |
+| 3 | Propose E, schema/wire/live, N=50, orch, yield, axis split, multi-tenant | **Landed** |
+| Later | N=100+, true fiber parallel, full A+F module split when host fixed | Optional |
+
+---
+
+## How to reproduce
+
+```bash
+./scripts/report.sh                 # offline 12/12 → notes/last-run-report.md
+./scripts/run-all.sh                # same suite
+source ./scripts/env-minimax.sh
+./scripts/run-aura.sh examples/09-live-minimax/main.aura
+```
+
+---
+
+## Optional next measurements
+
+- N=100+ soak if product needs longer multi-round evidence.  
+- Re-enable true fiber parallel when host closure capture is fixed.  
+- Extract embedded A+F from `aether-min` when cross-module free-vars survive rebind.  
+- Broader Unify spans outside \(S_{\mathrm{Aether}}\) (not Aether’s sole job).

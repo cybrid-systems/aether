@@ -46,7 +46,7 @@ A system is in \(S_{\mathrm{Aether}}\) when it simultaneously has:
 If this subspace cannot achieve low escape rates, the broader Unify thesis is
 weakened at its most leveraged point.
 
-### Explicitly out of scope (for Aether Phase 1–2)
+### Explicitly out of scope (Aether Phase 1–3)
 
 | Out of scope | Why |
 |--------------|-----|
@@ -156,16 +156,27 @@ aether/
 
 ## Span order (execution path)
 
-| # | Example | Axes | Answers |
-|---|---------|------|---------|
-| 1 | Minimal self-evolving loop (no LLM) | A+B+F | Can pure Aura finish O→…→R? |
-| 2 | Business-signal decisions (error rate / latency thresholds) | A+B | Decision beyond engine counters? |
-| 3 | Researcher + executor (LLM may propose) | C+E | Can \(E\) stay on the propose edge? |
-| 4 | Hot strategy + self-heal | D | Does temporal adaptation stay isomorphic? |
-| 5 | Long-run denseness harness + report | all | Defensible coverage conclusion? |
+| Phase | Probes | Milestone |
+|-------|--------|-----------|
+| **1** | 01–03 | Minimal loop, business decide, dual-role; core \(E\)=0 |
+| **2** | 04–05 | Hot heal + N=10 harness; first denseness write-up |
+| **3** | 06–13 | Propose \(E\), schema/wire/live LLM, N=50, arbiter, yield fanout, axis libs, multi-tenant |
 
-Phase 1 success: examples 1–3 with low business escape and full observe/rollback.  
-Phase 2 success: examples 4–5 and a first `notes/denseness-report.md` for \(S_{\mathrm{Aether}}\).
+| # | Probe | Axes | Answers |
+|---|-------|------|---------|
+| 01 | Single closed loop | A B F | Pure Aura O→…→R? |
+| 02 | Business fail-rate | A B F | Decide beyond engine counters? |
+| 03 | Researcher + executor | A B C E | Dual-role; \(E\) on propose only? |
+| 04 | Hot strategy + heal | A B D F | Temporal adaptation isomorphic? |
+| 05 | Long-run N=10 | smoke | Multi-round boundary health? |
+| 06 | Propose-edge \(E\) meter | E | Stub \(E\) isolated from core? |
+| 07 | Proposal schema | E | Invalid never rebinds? |
+| 08 | Wire parse | E | LLM-shaped text → schema → exec? |
+| 09 | Live MiniMax-M3 | E | Real HTTPS propose edge? *(manual)* |
+| 10 | Long-N N=50 | A B D F | Stress still pure + safety-ok? |
+| 11 | Arbitrated multi | C E | Multi-propose without external queue? |
+| 12 | Parallel + yield | C | Fanout + yield + single mutator? |
+| 13 | Multi-tenant region | B D | Name-isolated rebind? |
 
 ## Escape discipline
 
@@ -181,33 +192,35 @@ Escapes on the evolvable core are treated as **evidence against** denseness unti
 
 Apache License 2.0 (same as Aura)
 
-## Status
+## Status — Phase 1–3 complete
 
-Scope locked. Phase 1 examples on modular `lib/aether-min.aura`:
+**Judgment:** on \(S_{\mathrm{Aether}}\), \(V_A\) is **practically dense** on the
+evolvable core (12/12 offline PASS; live 09 opt-in). Full write-up:
+[`notes/denseness-report.md`](notes/denseness-report.md).
 
 ```bash
-./scripts/run-all.sh
+./scripts/report.sh                 # offline 12 probes → notes/last-run-report.md
+./scripts/run-all.sh                # same suite
+source ./scripts/env-minimax.sh
+./scripts/run-aura.sh examples/09-live-minimax/main.aura
 ```
 
 | Example | Proves |
 |---------|--------|
 | **01** | O→D→M→V→R baseline (commit / skip / rollback) |
 | **02** | Decide from **business fail-rate** |
-| **03** | Dual-role propose edge + executor guards (C+E) |
-| **04** | Hot strategy deploy + **self-heal** (D) |
-| **05** | Multi-round denseness harness |
-| **06** | Propose-edge **\(E\) metering** (rule E=0 / stub E≥1) |
+| **03** | Dual-role propose edge + executor guards |
+| **04** | Hot strategy deploy + **self-heal** |
+| **05** | Multi-round denseness harness (N=10) |
+| **06** | Propose-edge **\(E\) metering** (rule / stub) |
 | **07** | **Schema gate** — invalid refuse; bad semantics rollback |
-| **08** | **Wire parse** — prose/garbage/illegal text → structured proposal |
-| **09** | **Live MiniMax-M3** propose edge (`source ./scripts/env-minimax.sh`) |
+| **08** | **Wire parse** — prose/garbage/illegal → structured proposal |
+| **09** | **Live MiniMax-M3** propose edge |
+| **10** | **N=50** poison/heal denseness stress |
+| **11** | **Arbitrated** multi-propose (pure Aura) |
+| **12** | **Yield fanout** multi-propose + single executor |
+| **13** | **Multi-tenant** name-isolated rebind |
 
-```bash
-./scripts/run-all.sh              # 01–08 + writes notes/last-run-report.md
-./scripts/report.sh               # suite + denseness table only
-source ./scripts/env-minimax.sh
-./scripts/run-aura.sh examples/09-live-minimax/main.aura   # live
-```
+New probe: copy `examples/_template` → `examples/NN-name`, add to `run-all.sh` / `report.sh` if offline.
 
-New probe: copy `examples/_template` → `examples/NN-name`, add to `run-all.sh` if offline.
-
-See [`notes/denseness-report.md`](notes/denseness-report.md) and [`examples/README.md`](examples/README.md).
+See [`examples/README.md`](examples/README.md), [`lib/README.md`](lib/README.md), [`prompts/GROK.md`](prompts/GROK.md).

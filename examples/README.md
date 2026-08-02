@@ -4,9 +4,12 @@ Each example is a **runnable denseness probe**. Convention:
 
 1. Print human `PASS: …` or `FAIL…`
 2. Print machine line: `RESULT pass|fail example=… key=val…`
-3. Prefer `aether-min` / `aether-domain` / `aether-propose` over copy-paste
+3. Prefer `aether-min` / `aether-domain` / `aether-propose` / `aether-orch` / `aether-region`
 
-## Offline suite (`./scripts/run-all.sh`)
+Phase 1–3 offline suite is **12/12** (`./scripts/report.sh`). Judgment:
+[`notes/denseness-report.md`](../notes/denseness-report.md).
+
+## Offline suite (`./scripts/run-all.sh` / `report.sh`)
 
 | Dir | Claim |
 |-----|--------|
@@ -14,7 +17,7 @@ Each example is a **runnable denseness probe**. Convention:
 | `02-business-signal` | Business fail-rate decide |
 | `03-researcher-executor` | Dual-role propose/exec |
 | `04-hot-strategy-heal` | Hot deploy + self-heal |
-| `05-long-run-denseness` | Multi-round harness |
+| `05-long-run-denseness` | Multi-round harness (N=10) |
 | `06-propose-edge-escape` | Meter \(E\) on propose edge |
 | `07-proposal-schema` | Schema before rebind |
 | `08-parse-proposal-wire` | Wire parse → schema → exec |
