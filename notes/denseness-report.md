@@ -107,7 +107,8 @@ Details: [lib/README.md](../lib/README.md).
 ## Host residuals (not denseness failures)
 
 Workarounds for CLI / packaging — claim is about \(S_{\mathrm{Aether}}\) semantics, not host polish.
-Actionable table: [host-residuals.md](host-residuals.md) (H1–H8).
+Actionable table + Aura issues: [host-residuals.md](host-residuals.md)
+(tracker [#2578](https://github.com/cybrid-systems/aura/issues/2578); children #2579–#2582).
 
 1. Sequential `let`; multi-binding `let` can mis-bind.  
 2. Verify with `(eq? x #t)`.  
