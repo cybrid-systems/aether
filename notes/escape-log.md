@@ -15,9 +15,15 @@ Format for each entry:
 
 ---
 
-(No business-logic escapes recorded for example 01.)
+(No business-logic escapes recorded for examples 01–03 PASS paths.)
 
 Host configuration used for demos (not counted as \(V_A\) escapes of the evolvable core):
 
 - `AURA_SANDBOX=off` — CLI must allow workspace mutation; production isolation remains Aura’s responsibility.
 - `AURA_PIPELINE_STRICT=0` — some host builds forbid tree-walker fallback; demo scripts relax this for reproducibility.
+
+### Example 03 note (not an escape on PASS path)
+
+- Researcher propose edge is pure Aura rule table today.
+- Optional future LLM propose is **allowed only** in `researcher-propose` / propose-edge hook; executor must stay pure `aether-min`. Log any live LLM use here when enabled.
+

@@ -136,8 +136,9 @@ aether/
 ├── lib/
 │   └── aether-min.aura      # Staged reusable A+B+F helpers (experimental)
 ├── examples/
-│   ├── 01-single-loop/      # O→D→M→V→R baseline (score rebind)
-│   └── 02-business-signal/  # Decide from fail-rate / budget
+│   ├── 01-single-loop/         # O→D→M→V→R baseline
+│   ├── 02-business-signal/     # Decide from fail-rate / budget
+│   └── 03-researcher-executor/ # Propose edge + guarded executor
 └── notes/
     ├── escape-log.md        # Every necessary escape
     └── denseness-report.md  # (planned) Aggregated θ, ρ, conclusions
@@ -179,13 +180,16 @@ Scope locked. Phase 1 examples on modular `lib/aether-min.aura`:
 ```bash
 ./scripts/run-aura.sh examples/01-single-loop/main.aura
 ./scripts/run-aura.sh examples/02-business-signal/main.aura
+./scripts/run-aura.sh examples/03-researcher-executor/main.aura
 ```
 
 | Example | Proves |
 |---------|--------|
 | **01** | O→D→M→V→R baseline (commit / skip / rollback) |
 | **02** | Decide from **business fail-rate**, not only engine counters |
+| **03** | **Dual-role**: researcher propose edge + executor guards (C+E) |
 
-Zero escapes in the evolvable core. Requires Aura host fixes #2566–#2570.
+Phase 1 examples 1–3 complete. Zero escapes in the evolvable core on PASS paths.
+Requires Aura host fixes #2566–#2570.
 
-**Next:** example 03 (researcher + executor; LLM only on propose edge).
+**Next (Phase 2):** hot strategy + self-heal (04); long-run denseness harness (05).
