@@ -1,4 +1,4 @@
-# \(S_{\mathrm{Aether}}\) denseness report (Phase 1–3)
+# \(S_{\mathrm{Aether}}\) denseness report (Phase 1–4)
 
 **Date:** 2026-08-02  
 **Host:** Aura (local `aura-grok`) with fixes #2566–#2570  
@@ -30,7 +30,7 @@ Aether does **not** claim denseness over all of \(S_{\mathrm{practical}}\).
 | **A** Loop completeness | Multi-round O→D→M→V→R | 01, 02, 05, 10 |
 | **B** Mutation surface | Named rebind stays safe | 01–05, 10, 13 |
 | **C** Orch topology | Dual → arbitrate → yield fanout | 03, 11, 12 |
-| **D** Temporal adaptation | Hot deploy, poison, heal | 04, 05, 10, 13 |
+| **D** Temporal adaptation | Hot deploy, poison, heal, version, freeze | 04, 05, 10, 13, **15**, **16** |
 | **E** World boundary | Schema / wire / stub / live LLM | 03, 06–09 |
 | **F** Metrology | Stats, report, escape log | all + `scripts/report.sh` |
 
@@ -54,8 +54,10 @@ Aether does **not** claim denseness over all of \(S_{\mathrm{practical}}\).
 | [12-parallel-yield](../examples/12-parallel-yield/) | C | PASS fanout + yield + single executor | 0 |
 | [13-multi-tenant-region](../examples/13-multi-tenant-region/) | B D | PASS name-isolated multi-tenant rebind | 0 |
 | [14-long-n-100](../examples/14-long-n-100/) | A B D F | PASS N=100 poison/heal soak; safety-ok | 0 |
+| [15-version-coexist](../examples/15-version-coexist/) | D B | PASS active+golden coexist; poison active only | 0 |
+| [16-drift-freeze](../examples/16-drift-freeze/) | D A | PASS freeze on drift; heal unfreezes | 0 |
 
-Offline automation covers **01–08, 10–14**. Live **09** is opt-in.
+Offline automation covers **01–08, 10–16**. Live **09** is opt-in.
 
 ---
 
@@ -147,6 +149,7 @@ denseness for numerical kernels, hard realtime, drivers, or arbitrary product do
 | 1 | Minimal loop, business signal, dual-role | **Landed** |
 | 2 | Hot heal, long-run N=10, first report | **Landed** |
 | 3 | Propose E, schema/wire/live, N=50–100, orch, yield, axis split, multi-tenant, CI | **Landed** |
+| 4 | Version coexistence (15); drift freeze (16) | **Landed** |
 | Upstream-blocked | True fiber parallel; full A+F extract | [host-residuals.md](host-residuals.md) |
 
 ---

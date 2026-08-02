@@ -23,6 +23,8 @@ EXAMPLES=(
   examples/12-parallel-yield/main.aura
   examples/13-multi-tenant-region/main.aura
   examples/14-long-n-100/main.aura
+  examples/15-version-coexist/main.aura
+  examples/16-drift-freeze/main.aura
 )
 
 : >"$RAW"

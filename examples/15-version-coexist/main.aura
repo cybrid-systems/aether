@@ -1,0 +1,137 @@
+; examples/15-version-coexist/main.aura
+; Axis D: active strategy + coexisting golden version (peer never rebound).
+; Active can promote/poison/heal; golden stays fixed for comparison.
+; Host note: rebind of *second* multi-define arithmetic binding is flaky —
+; golden is installed second and left immutable; active is first (rebind-safe).
+; Run: ./scripts/run-aura.sh examples/15-version-coexist/main.aura
+
+(require "std/list" all:)
+(require "aether-min" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether 15-version-coexist: active + golden peer ===")
+(newline)
+
+(define installed #f)
+(define r-promote #f)
+(define r-poison #f)
+(define r-heal #f)
+(define a-ok #f)
+(define b-ok #f)
+(define c-ok #f)
+(define d-ok #f)
+(define all-ok #f)
+(define body-double "(lambda (x) (* x 2))")
+(define body-triple "(lambda (x) (* x 3))")
+(define body-poison "(lambda (x) (* x 100))")
+
+(set! installed
+  (aether:install-source
+    "(define strategy (lambda (x) (* x 2))) (define golden (lambda (x) (* x 3)))"))
+
+(display "R0 strategy(7)=")
+(display (strategy 7))
+(display " golden(7)=")
+(display (golden 7))
+(newline)
+
+; ── A: both versions live (active double, golden triple) ──
+(set! a-ok
+  (and installed
+       (= (strategy 7) 14)
+       (= (golden 7) 21)))
+
+; ── B: promote active to golden body; peer golden unchanged ──
+(set! r-promote
+  (aether:loop-once
+    (lambda () (strategy 7))
+    (lambda () #t)
+    "strategy"
+    body-triple
+    "promote-to-golden"
+    (lambda () (= (strategy 7) 21))))
+(display "B promote=")
+(write r-promote)
+(newline)
+(display "B strategy=")
+(display (strategy 7))
+(display " golden=")
+(display (golden 7))
+(newline)
+(set! b-ok
+  (and (eq? (aether:alist-ref ":decision" r-promote #f) 'commit)
+       (= (strategy 7) 21)
+       (= (golden 7) 21)))
+
+; ── C: poison active only; golden still triple ──
+(set! r-poison (aether:rebind-safe "strategy" body-poison "poison-active"))
+(display "C poison=")
+(write r-poison)
+(newline)
+(display "C strategy=")
+(display (strategy 7))
+(display " golden=")
+(display (golden 7))
+(newline)
+(set! c-ok
+  (and (aether:alist-ref ":ok" r-poison #f)
+       (= (strategy 7) 700)
+       (= (golden 7) 21)))
+
+; ── D: heal active from golden body string; golden still peer ──
+(set! r-heal
+  (aether:loop-once
+    (lambda () (strategy 7))
+    (lambda () #t)
+    "strategy"
+    body-triple
+    "heal-from-golden"
+    (lambda () (= (strategy 7) 21))))
+(display "D heal=")
+(write r-heal)
+(newline)
+(display "D strategy=")
+(display (strategy 7))
+(display " golden=")
+(display (golden 7))
+(newline)
+(set! d-ok
+  (and (eq? (aether:alist-ref ":decision" r-heal #f) 'commit)
+       (= (strategy 7) 21)
+       (= (golden 7) 21)))
+
+(display "stats ")
+(write (aether:stats-alist))
+(newline)
+
+(set! all-ok
+  (and a-ok b-ok c-ok d-ok
+       (aether:safety-ok?)
+       (= (aether:stats-ref "escapes") 0)
+       (>= (aether:stats-ref "commits") 2)))
+
+(if all-ok
+  (begin
+    (display "PASS: version coexistence (active mutates; golden peer stable)")
+    (newline)
+    (display "escapes: 0; dual versions coexist under rebind of active only")
+    (newline)
+    (display "RESULT pass example=15-version-coexist escapes=0 commits=")
+    (display (aether:stats-ref "commits"))
+    (newline))
+  (begin
+    (display "FAIL: version coexistence")
+    (newline)
+    (display " a-ok=")
+    (display a-ok)
+    (display " b-ok=")
+    (display b-ok)
+    (display " c-ok=")
+    (display c-ok)
+    (display " d-ok=")
+    (display d-ok)
+    (newline)
+    (display "RESULT fail example=15-version-coexist escapes=")
+    (display (aether:stats-ref "escapes"))
+    (newline)))

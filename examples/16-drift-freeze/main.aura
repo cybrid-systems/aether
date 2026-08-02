@@ -1,0 +1,178 @@
+; examples/16-drift-freeze/main.aura
+; Axis D: detect drift (unhealthy) → freeze mutations → only heal path allowed.
+; Frozen rebind attempts refuse without touching workspace.
+; Linear top-level (host free-var / define-after-mutate discipline).
+; Run: ./scripts/run-aura.sh examples/16-drift-freeze/main.aura
+
+(require "std/list" all:)
+(require "aether-min" all:)
+(require "aether-domain" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether 16-drift-freeze: freeze on drift, heal unfreezes ===")
+(newline)
+
+(define installed #f)
+(define frozen #f)
+(define freeze-count 0)
+(define r-frozen-attempt #f)
+(define r-heal #f)
+(define r-after #f)
+(define fails-before-freeze 0)
+(define fails-while-frozen 0)
+(define fails-after-heal 0)
+(define a-ok #f)
+(define b-ok #f)
+(define c-ok #f)
+(define d-ok #f)
+(define all-ok #f)
+
+(set! installed (aether:gate-install-strict))
+(display "R0 fails=")
+(display (aether:gate-fail-count))
+(display " frozen=")
+(display frozen)
+(newline)
+
+; ── A: over budget → detect drift → freeze ──
+(set! fails-before-freeze (aether:gate-fail-count))
+(if (<= fails-before-freeze 4)
+  (set! frozen #f)
+  (set! frozen #t))
+(display "A drift frozen=")
+(display frozen)
+(display " fails=")
+(display fails-before-freeze)
+(newline)
+(set! a-ok
+  (and installed
+       frozen
+       (> fails-before-freeze 4)))
+
+; ── B: while frozen, widen attempt refuses (no rebind) ──
+(if frozen
+  (begin
+    (set! freeze-count (+ freeze-count 1))
+    (set! r-frozen-attempt
+      (list (cons ":ok" #f)
+            (cons ":decision" 'freeze)
+            (cons ":reason" "drift-freeze")
+            (cons ":snap" -1))))
+  (set! r-frozen-attempt
+    (aether:loop-once
+      (lambda () (aether:gate-fail-count))
+      (lambda () #t)
+      "gate"
+      aether:gate-body-widen
+      "blocked-widen"
+      aether:gate-within-budget?)))
+(set! fails-while-frozen (aether:gate-fail-count))
+(display "B frozen-attempt=")
+(write r-frozen-attempt)
+(newline)
+(display "B fails still=")
+(display fails-while-frozen)
+(newline)
+(set! b-ok
+  (and (eq? (aether:alist-ref ":decision" r-frozen-attempt #f) 'freeze)
+       (= fails-while-frozen fails-before-freeze)
+       (>= freeze-count 1)
+       (not (aether:gate-within-budget?))))
+
+; ── C: explicit heal unfreezes (clear freeze, then guarded widen) ──
+(set! frozen #f)
+(set! r-heal
+  (aether:loop-once
+    (lambda () (aether:gate-fail-count))
+    (lambda () #t)
+    "gate"
+    aether:gate-body-widen
+    "heal-widen"
+    aether:gate-within-budget?))
+(if (eq? (aether:alist-ref ":decision" r-heal #f) 'commit)
+  (set! frozen #f)
+  (set! frozen #t))
+(set! fails-after-heal (aether:gate-fail-count))
+(display "C heal=")
+(write r-heal)
+(newline)
+(display "C fails=")
+(display fails-after-heal)
+(display " frozen=")
+(display frozen)
+(newline)
+(set! c-ok
+  (and (eq? (aether:alist-ref ":decision" r-heal #f) 'commit)
+       (= fails-after-heal 4)
+       (aether:gate-within-budget?)
+       (not frozen)))
+
+; ── D: healthy → skip mutate; re-check drift stays unfrozen ──
+(if (aether:gate-within-budget?)
+  (set! frozen #f)
+  (set! frozen #t))
+(if frozen
+  (begin
+    (set! freeze-count (+ freeze-count 1))
+    (set! r-after
+      (list (cons ":ok" #f)
+            (cons ":decision" 'freeze)
+            (cons ":reason" "drift-freeze")
+            (cons ":snap" -1))))
+  (set! r-after
+    (aether:loop-once
+      (lambda () (aether:gate-fail-count))
+      (lambda () #f)
+      "gate"
+      aether:gate-body-widen
+      "post-heal-skip"
+      aether:gate-within-budget?)))
+(display "D after=")
+(write r-after)
+(display " frozen=")
+(display frozen)
+(newline)
+(set! d-ok
+  (and (not frozen)
+       (eq? (aether:alist-ref ":decision" r-after #f) 'skip)
+       (aether:gate-within-budget?)))
+
+(display "stats ")
+(write (aether:stats-alist))
+(newline)
+(display "freeze-count=")
+(display freeze-count)
+(newline)
+
+(set! all-ok
+  (and a-ok b-ok c-ok d-ok
+       (aether:safety-ok?)
+       (= (aether:stats-ref "escapes") 0)
+       (>= freeze-count 1)
+       (>= (aether:stats-ref "commits") 1)))
+
+(if all-ok
+  (begin
+    (display "PASS: drift freeze (refuse mutate while drifted; heal restores)")
+    (newline)
+    (display "escapes: 0; freeze is pure-Aura control, not host escape")
+    (newline)
+    (display "RESULT pass example=16-drift-freeze escapes=0 freezes=")
+    (display freeze-count)
+    (newline))
+  (begin
+    (display "FAIL: drift freeze")
+    (newline)
+    (display " a-ok=")
+    (display a-ok)
+    (display " b-ok=")
+    (display b-ok)
+    (display " c-ok=")
+    (display c-ok)
+    (display " d-ok=")
+    (display d-ok)
+    (newline)
+    (display "RESULT fail example=16-drift-freeze escapes=")
+    (display (aether:stats-ref "escapes"))
+    (newline)))

@@ -1,8 +1,8 @@
 # Last denseness run
 
-- **When:** 2026-08-02T13:11:41Z
+- **When:** 2026-08-02T14:51:50Z
 - **Host:** `../aura-grok/build/aura` (via run-aura.sh)
-- **Passed:** 13 / 13
+- **Passed:** 15 / 15
 - **Failed:** 0
 
 | Example | Status | RESULT |
@@ -20,6 +20,8 @@
 | `12-parallel-yield` | pass | `RESULT pass example=12-parallel-yield escapes=0 mode=sequential-yield` |
 | `13-multi-tenant-region` | pass | `RESULT pass example=13-multi-tenant-region escapes=0 commits=3` |
 | `14-long-n-100` | pass | `RESULT pass example=14-long-n-100 N=100 escapes=0 heals=9 poisons=9` |
+| `15-version-coexist` | pass | `RESULT pass example=15-version-coexist escapes=0 commits=2` |
+| `16-drift-freeze` | pass | `RESULT pass example=16-drift-freeze escapes=0 freezes=1` |
 
 Full log: `notes/.last-run-raw.txt` (gitignored if desired).
 

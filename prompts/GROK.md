@@ -121,6 +121,7 @@ Phase highlights:
 | 1 | 01–03 loop / business / dual-role |
 | 2 | 04–05 hot heal + N=10 + first report |
 | 3 | 06–09 propose \(E\); 10–14 N-stress; 11–12 orch; axis split; 13 multi-tenant; CI; final report |
+| 4 | 15 version coexist; 16 drift freeze (Axis D residual span) |
 
 ### Upstream-blocked (see `notes/host-residuals.md`)
 
