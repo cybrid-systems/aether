@@ -2,8 +2,8 @@
 
 **Date:** 2026-08-02  
 **Host:** Aura (local `aura-grok` build) with fixes #2566–#2570  
-**Surface:** `lib/aether-min` + `aether-domain` + `aether-propose` + examples 01–09  
-**Last offline suite:** `notes/last-run-report.md` (8/8)
+**Surface:** `lib/aether-min` + `aether-domain` + `aether-propose` + `aether-orch` + examples 01–11  
+**Last offline suite:** `notes/last-run-report.md`
 
 ## Claim under test
 
@@ -25,6 +25,7 @@ escapes \(E\) on the world/propose edge only.
 | [08-parse-proposal-wire](../examples/08-parse-proposal-wire/) | E | PASS wire parse from prose; garbage/illegal refuse | 0 core / ≥1 sim-escape |
 | [09-live-minimax](../examples/09-live-minimax/) | E | PASS MiniMax-M3 live propose (manual; needs key) | 0 core / ≥1 live HTTPS |
 | [10-long-n-stress](../examples/10-long-n-stress/) | A B D F | PASS N=50 poison/heal cadence; safety-ok | 0 |
+| [11-arbitrated-multi](../examples/11-arbitrated-multi/) | C E | PASS multi-propose + arbiter filters deny / prefers skip|widen | 0 |
 
 ## Metrics (practical denseness criteria)
 
@@ -78,9 +79,10 @@ This does **not** claim denseness over all of \(S_{\mathrm{practical}}\)
 
 - **`aether-domain`** — shared admit-gate workload (1..10, fails≤4) used by probes 02–03, 05–09 so examples no longer copy-paste batch/fail helpers.
 - **`aether-propose`** — schema + wire parse + rule/stub/live propose; string/schema helpers **inlined** into public entry points so free-vars survive workspace rebind (host free-var breakage across mutate).
+- **`aether-orch`** — multi-proposer filter + score + pick (`aether:arbitrate`); deny-all dropped; healthy prefers skip; unhealthy prefers widen. Fully inlined public entry (same rebind free-var discipline).
 
 ## Next measurements
 
+- Axis C residual: parallel+yield multi-agent (orch:parallel-with-yield) if host closure capture is stable enough.
 - N=100+ optional if product needs longer soak; multi-tenant region isolation if needed.
-- Axis C deeper: arbitrated multi-agent (beyond dual-role functions).
 - Split `aether-min` into axis modules once host module packaging is fully stable.

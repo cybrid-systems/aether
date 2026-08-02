@@ -136,20 +136,14 @@ aether/
 ├── lib/
 │   ├── aether-min.aura         # A+B+F closed-loop surface
 │   ├── aether-propose.aura     # Propose edge (rule / stub / live)
-│   └── aether-domain.aura      # Shared gate workload (02–09)
+│   ├── aether-domain.aura      # Shared gate workload (02–11)
+│   └── aether-orch.aura        # Multi-propose arbitration (Axis C)
 ├── examples/
 │   ├── _template/              # Copy to add a new probe
 │   ├── README.md               # Probe index + conventions
-
-│   ├── 01-single-loop/
-│   ├── 02-business-signal/
-│   ├── 03-researcher-executor/
-│   ├── 04-hot-strategy-heal/
-│   ├── 05-long-run-denseness/
-│   ├── 06-propose-edge-escape/ # Meter E on propose edge only
-│   ├── 07-proposal-schema/     # Schema-validate before rebind
-│   ├── 08-parse-proposal-wire/ # LLM-style wire parse → schema → exec
-│   └── 09-live-minimax/        # MiniMax-M3 live propose (needs key)
+│   ├── 01-single-loop/ … 09-live-minimax/
+│   ├── 10-long-n-stress/       # N=50 denseness stress
+│   └── 11-arbitrated-multi/    # Multi-propose + arbiter
 └── notes/
     ├── escape-log.md
     └── denseness-report.md

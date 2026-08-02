@@ -14,6 +14,7 @@ EXAMPLES=(
   examples/07-proposal-schema/main.aura
   examples/08-parse-proposal-wire/main.aura
   examples/10-long-n-stress/main.aura
+  examples/11-arbitrated-multi/main.aura
 )
 
 fail=0

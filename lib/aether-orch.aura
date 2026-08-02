@@ -1,0 +1,118 @@
+; lib/aether-orch.aura — Axis C: multi-proposer arbitration (pure Aura)
+;
+; (require "aether-orch" all:)
+;
+; Topology: many propose edges → one arbiter → one executor.
+; Public entry points are self-contained (no private free helpers): host
+; free-vars break across workspace rebind.
+
+(export aether:proposal-deny?
+        aether:proposal-widen?
+        aether:filter-proposals
+        aether:arbitrate
+        aether:arbiter-skip)
+
+(require "std/list" all:)
+(require "std/string" all:)
+(require "aether-propose" all:)
+
+(define (aether:arbiter-skip reason)
+  (list "skip" "gate" "" (if (string? reason) reason "arbiter-skip") "arbiter"))
+
+(define (aether:proposal-deny? p)
+  (if (not (pair? p))
+    #f
+    (if (null? (cdr (cdr p)))
+      #f
+      (let ((kind (car p))
+            (body (car (cdr (cdr p)))))
+        (and (equal? kind "mutate")
+             (string? body)
+             (or (string-contains? body "#f")
+                 (string-contains? body "deny")))))))
+
+(define (aether:proposal-widen? p)
+  (if (not (pair? p))
+    #f
+    (if (null? (cdr (cdr p)))
+      #f
+      (let ((kind (car p))
+            (body (car (cdr (cdr p)))))
+        (and (equal? kind "mutate")
+             (string? body)
+             (string-contains? body "< x 7"))))))
+
+; Schema-valid and non-deny only (inlined deny + valid checks).
+(define (aether:filter-proposals proposals)
+  (let ((xs (if (list? proposals) proposals (list proposals))))
+    (let loop ((ys xs) (acc (quote ())))
+      (if (null? ys)
+        (reverse acc)
+        (let ((p (car ys)))
+          (if (not (pair? p))
+            (loop (cdr ys) acc)
+            (if (not (aether:proposal-valid? p))
+              (loop (cdr ys) acc)
+              (let ((kind (car p))
+                    (body (if (null? (cdr (cdr p))) "" (car (cdr (cdr p))))))
+                (if (and (equal? kind "mutate")
+                         (string? body)
+                         (or (string-contains? body "#f")
+                             (string-contains? body "deny")))
+                  (loop (cdr ys) acc)
+                  (loop (cdr ys) (cons p acc)))))))))))
+
+; Fully inlined score / prefer / source — no private free helpers.
+(define (aether:arbitrate proposals budget-ok?)
+  (let ((xs0 (if (list? proposals) proposals (list proposals))))
+    (let loop-filter ((ys xs0) (acc (quote ())))
+      (if (null? ys)
+        (let ((cands (reverse acc)))
+          (if (null? cands)
+            (list "skip" "gate" "" "no-safe-candidate" "arbiter")
+            (let loop-pick ((zs (cdr cands)) (best (car cands)))
+              (if (null? zs)
+                best
+                (let ((cand (car zs)))
+                  (let ((kind-b (car best))
+                        (kind-c (car cand))
+                        (body-b (if (null? (cdr (cdr best))) "" (car (cdr (cdr best)))))
+                        (body-c (if (null? (cdr (cdr cand))) "" (car (cdr (cdr cand)))))
+                        (src-b (if (null? (cdr (cdr (cdr (cdr best)))))
+                                 ""
+                                 (car (cdr (cdr (cdr (cdr best)))))))
+                        (src-c (if (null? (cdr (cdr (cdr (cdr cand)))))
+                                 ""
+                                 (car (cdr (cdr (cdr (cdr cand))))))))
+                    (let ((score-b
+                            (if (equal? kind-b "skip")
+                              (if budget-ok? 50 10)
+                              (if (and (string? body-b) (string-contains? body-b "< x 7"))
+                                (if budget-ok? 30 50)
+                                (if budget-ok? 20 25))))
+                          (score-c
+                            (if (equal? kind-c "skip")
+                              (if budget-ok? 50 10)
+                              (if (and (string? body-c) (string-contains? body-c "< x 7"))
+                                (if budget-ok? 30 50)
+                                (if budget-ok? 20 25)))))
+                      (if (> score-c score-b)
+                        (loop-pick (cdr zs) cand)
+                        (if (< score-c score-b)
+                          (loop-pick (cdr zs) best)
+                          (if (equal? src-c "conservative")
+                            (loop-pick (cdr zs) cand)
+                            (loop-pick (cdr zs) best)))))))))))
+        (let ((p (car ys)))
+          (if (not (pair? p))
+            (loop-filter (cdr ys) acc)
+            (if (not (aether:proposal-valid? p))
+              (loop-filter (cdr ys) acc)
+              (let ((kind (car p))
+                    (body (if (null? (cdr (cdr p))) "" (car (cdr (cdr p))))))
+                (if (and (equal? kind "mutate")
+                         (string? body)
+                         (or (string-contains? body "#f")
+                             (string-contains? body "deny")))
+                  (loop-filter (cdr ys) acc)
+                  (loop-filter (cdr ys) (cons p acc)))))))))))

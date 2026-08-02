@@ -1,8 +1,8 @@
 # Last denseness run
 
-- **When:** 2026-08-02T12:40:29Z
+- **When:** 2026-08-02T12:46:45Z
 - **Host:** `../aura-grok/build/aura` (via run-aura.sh)
-- **Passed:** 9 / 9
+- **Passed:** 10 / 10
 - **Failed:** 0
 
 | Example | Status | RESULT |
@@ -16,6 +16,7 @@
 | `07-proposal-schema` | pass | `RESULT pass example=07-proposal-schema escapes=0` |
 | `08-parse-proposal-wire` | pass | `RESULT pass example=08-parse-proposal-wire escapes=1` |
 | `10-long-n-stress` | pass | `RESULT pass example=10-long-n-stress N=50 escapes=0 heals=4 poisons=4` |
+| `11-arbitrated-multi` | pass | `RESULT pass example=11-arbitrated-multi escapes=0 commits=2` |
 
 Full log: `notes/.last-run-raw.txt` (gitignored if desired).
 

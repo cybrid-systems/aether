@@ -19,6 +19,7 @@ Each example is a **runnable denseness probe**. Convention:
 | `07-proposal-schema` | Schema before rebind |
 | `08-parse-proposal-wire` | Wire parse → schema → exec |
 | `10-long-n-stress` | N=50 poison/heal denseness stress |
+| `11-arbitrated-multi` | Multi-propose + pure-Aura arbiter |
 
 ## Live (not in run-all)
 

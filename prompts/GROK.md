@@ -118,8 +118,8 @@ escape log honest; business-logic escape rate aimed &lt; 10–15%. Met offline 8
 ### Phase 3
 
 - **10** — longer-N denseness stress (N=50 poison/heal) — landed  
-- Axis C next: arbitrated multi-agent (beyond dual-role)  
-- Optional: split `aether-min` into axis modules when packaging is stable  
+- **11** — arbitrated multi-agent (`aether-orch`) — landed  
+- Optional next: parallel+yield topology; split `aether-min` into axis modules  
 - Multi-tenant region isolation only if product needs it  
 
 ### Later / not Aether’s job alone

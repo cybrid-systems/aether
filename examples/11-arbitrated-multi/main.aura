@@ -1,0 +1,197 @@
+; examples/11-arbitrated-multi/main.aura
+; Axis C: multi-proposer + pure-Aura arbiter + guarded executor.
+; Researchers only propose; arbiter selects; executor alone mutates.
+; Run: ./scripts/run-aura.sh examples/11-arbitrated-multi/main.aura
+
+(require "std/list" all:)
+(require "aether-min" all:)
+(require "aether-domain" all:)
+(require "aether-propose" all:)
+(require "aether-orch" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether 11-arbitrated-multi: multi-propose + arbiter ===")
+(newline)
+
+; Pre-allocate cells before any mutate (host: define-after-rebind is flaky).
+(define installed #f)
+(define p-cons #f)
+(define p-agg #f)
+(define picked #f)
+(define exec-r #f)
+(define a-ok #f)
+(define b-ok #f)
+(define c-ok #f)
+(define d-ok #f)
+(define all-ok #f)
+
+; Conservative: widen only when over budget; never deny.
+(define (researcher-conservative fails mode)
+  (if (equal? mode "widen")
+    (list "mutate" "gate" aether:gate-body-widen "cons-force-widen" "conservative")
+    (if (equal? mode "deny")
+      (list "mutate" "gate" aether:gate-body-deny "cons-force-deny" "conservative")
+      (if (> fails 4)
+        (list "mutate" "gate" aether:gate-body-widen "cons-auto-widen" "conservative")
+        (list "skip" "gate" "" "cons-auto-noop" "conservative")))))
+
+; Aggressive: widens earlier (fails>3); can force deny (to test arbiter filter).
+(define (researcher-aggressive fails mode)
+  (if (equal? mode "deny")
+    (list "mutate" "gate" aether:gate-body-deny "agg-force-deny" "aggressive")
+    (if (equal? mode "widen")
+      (list "mutate" "gate" aether:gate-body-widen "agg-force-widen" "aggressive")
+      (if (> fails 3)
+        (list "mutate" "gate" aether:gate-body-widen "agg-eager-widen" "aggressive")
+        (list "skip" "gate" "" "agg-auto-noop" "aggressive")))))
+
+(define (exec-picked proposal)
+  (aether:execute-proposal
+    proposal
+    (lambda () (aether:gate-fail-count))
+    (lambda () #t)
+    aether:gate-within-budget?))
+
+(set! installed (aether:gate-install-strict))
+(display "R0 batch=")
+(display (aether:gate-run-batch))
+(display " fails=")
+(display (aether:gate-fail-count))
+(newline)
+
+; ── A: over budget — both want mutate; arb prefers widen; commit ──
+(set! p-cons (researcher-conservative (aether:gate-fail-count) "auto"))
+(set! p-agg (researcher-aggressive (aether:gate-fail-count) "auto"))
+(set! picked (aether:arbitrate (list p-cons p-agg) (aether:gate-within-budget?)))
+(display "A cons=")
+(write p-cons)
+(newline)
+(display "A agg=")
+(write p-agg)
+(newline)
+(display "A picked=")
+(write picked)
+(newline)
+(set! exec-r (exec-picked picked))
+(display "A exec=")
+(write exec-r)
+(newline)
+(display "A batch=")
+(display (aether:gate-run-batch))
+(newline)
+(set! a-ok
+  (and (equal? (car p-cons) "mutate")
+       (equal? (car p-agg) "mutate")
+       (equal? (car picked) "mutate")
+       (aether:proposal-widen? picked)
+       (not (aether:proposal-deny? picked))
+       (eq? (aether:alist-ref ":decision" exec-r #f) 'commit)
+       (aether:gate-within-budget?)))
+
+; ── B: healthy — cons skip, agg may still widen; arb prefers skip ──
+(set! p-cons (researcher-conservative (aether:gate-fail-count) "auto"))
+(set! p-agg (researcher-aggressive (aether:gate-fail-count) "auto"))
+(set! picked (aether:arbitrate (list p-cons p-agg) (aether:gate-within-budget?)))
+(display "B cons=")
+(write p-cons)
+(display " agg=")
+(write p-agg)
+(newline)
+(display "B picked=")
+(write picked)
+(newline)
+(set! exec-r (exec-picked picked))
+(display "B exec=")
+(write exec-r)
+(newline)
+(set! b-ok
+  (and (equal? (car p-cons) "skip")
+       (equal? (car picked) "skip")
+       (eq? (aether:alist-ref ":decision" exec-r #f) 'skip)
+       (aether:gate-within-budget?)))
+
+; ── C: conflict — aggressive deny + conservative skip → arb rejects deny ──
+(set! p-cons (researcher-conservative (aether:gate-fail-count) "auto"))
+(set! p-agg (researcher-aggressive (aether:gate-fail-count) "deny"))
+(set! picked (aether:arbitrate (list p-cons p-agg) (aether:gate-within-budget?)))
+(display "C cons=")
+(write p-cons)
+(display " agg=")
+(write p-agg)
+(newline)
+(display "C picked=")
+(write picked)
+(newline)
+(set! exec-r (exec-picked picked))
+(display "C exec=")
+(write exec-r)
+(newline)
+(set! c-ok
+  (and (equal? (car p-cons) "skip")
+       (aether:proposal-deny? p-agg)
+       (equal? (car picked) "skip")
+       (not (aether:proposal-deny? picked))
+       (eq? (aether:alist-ref ":decision" exec-r #f) 'skip)
+       (aether:gate-within-budget?)
+       (= (aether:gate-fail-count) 4)))
+
+; ── D: both force — deny vs widen → arb picks widen, not deny ──
+(set! p-cons (researcher-conservative (aether:gate-fail-count) "widen"))
+(set! p-agg (researcher-aggressive (aether:gate-fail-count) "deny"))
+(set! picked (aether:arbitrate (list p-agg p-cons) (aether:gate-within-budget?)))
+(display "D picked=")
+(write picked)
+(newline)
+(set! exec-r (exec-picked picked))
+(display "D exec=")
+(write exec-r)
+(newline)
+(display "D batch=")
+(display (aether:gate-run-batch))
+(newline)
+(set! d-ok
+  (and (aether:proposal-deny? p-agg)
+       (aether:proposal-widen? p-cons)
+       (aether:proposal-widen? picked)
+       (not (aether:proposal-deny? picked))
+       (equal? (aether:proposal-source picked) "conservative")
+       (eq? (aether:alist-ref ":decision" exec-r #f) 'commit)
+       (aether:gate-within-budget?)))
+
+(display "stats ")
+(write (aether:stats-alist))
+(newline)
+
+(set! all-ok
+  (and installed
+       a-ok b-ok c-ok d-ok
+       (aether:safety-ok?)
+       (= (aether:stats-ref "escapes") 0)
+       (>= (aether:stats-ref "commits") 2)
+       (>= (aether:stats-ref "decide-skip") 2)))
+
+(if all-ok
+  (begin
+    (display "PASS: arbitrated multi-agent (filter deny; prefer widen/skip)")
+    (newline)
+    (display "escapes: 0; arbiter pure-Aura; executor alone mutates")
+    (newline)
+    (display "RESULT pass example=11-arbitrated-multi escapes=0 commits=")
+    (display (aether:stats-ref "commits"))
+    (newline))
+  (begin
+    (display "FAIL: arbitrated multi-agent")
+    (newline)
+    (display " a-ok=")
+    (display a-ok)
+    (display " b-ok=")
+    (display b-ok)
+    (display " c-ok=")
+    (display c-ok)
+    (display " d-ok=")
+    (display d-ok)
+    (newline)
+    (display "RESULT fail example=11-arbitrated-multi escapes=")
+    (display (aether:stats-ref "escapes"))
+    (newline)))
