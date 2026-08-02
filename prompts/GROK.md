@@ -103,10 +103,12 @@ notes/denseness-report.md
 
 ### Phase 1
 
-**Examples 01–06 — denseness probe suite**
+**Examples 01–07 — denseness probe suite**
 
 - `01`–`05` core loops (A–D + harness)  
-- `06` propose-edge \(E\) metering (`lib/aether-propose.aura`)  
+- `06` propose-edge \(E\) metering  
+- `07` proposal **schema gate** before mutate  
+- Libs: `aether-min`, `aether-propose`  
 - Report: `notes/denseness-report.md`  
 - Run all: `./scripts/run-all.sh`  
 
@@ -114,7 +116,7 @@ Host prerequisites: Aura #2566–#2570.
 
 **Optional next**
 
-- Live LLM parse → structured proposal schema (still propose-only)  
+- Live LLM → parse strictly into schema-valid proposals  
 - Split `aether-min` into axis modules  
 - Longer N / multi-tenant if product needs  
 

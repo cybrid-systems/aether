@@ -20,6 +20,7 @@ escapes \(E\) on the world/propose edge only.
 | [04-hot-strategy-heal](../examples/04-hot-strategy-heal/) | A B D F | PASS hot deploy + self-heal | 0 |
 | [05-long-run-denseness](../examples/05-long-run-denseness/) | all smoke | PASS N=10 deploy/skip/poison-heal | 0 |
 | [06-propose-edge-escape](../examples/06-propose-edge-escape/) | E | PASS rule E=0; stub E≥1; core still rolls back bad | 0 core / ≥1 propose-edge (intentional) |
+| [07-proposal-schema](../examples/07-proposal-schema/) | E | PASS schema refuse + semantic rollback | 0 |
 
 ## Metrics (practical denseness criteria)
 
@@ -39,7 +40,11 @@ See [escape-log.md](escape-log.md).
   business-logic escape.
 - Example 06 meters propose-edge \(E\): rule path keeps `escapes=0`; `llm-stub`
   increments `escapes` while executor verify/rollback stays pure Aura.
-- Live LLM (`AETHER_LLM_PROPOSE=live`) is optional and must remain propose-only.
+- Example 07 enforces a **structured proposal schema** before rebind: invalid
+  kinds/bodies never touch the workspace; schema-valid harmful bodies still
+  roll back via business verify.
+- Live LLM (`AETHER_LLM_PROPOSE=live`) is optional and must emit schema-valid
+  proposals only (parse-to-schema still conservative).
 
 ## Gaps / residual host constraints
 

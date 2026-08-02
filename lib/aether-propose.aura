@@ -1,18 +1,18 @@
-; lib/aether-propose.aura — Propose-edge helpers (Axis E)
+; lib/aether-propose.aura — Propose edge + proposal schema (Axis E)
 ;
 ; (require "aether-propose" all:)
 ;
-; Proposals are untrusted data for the executor:
+; Proposal list (untrusted):
 ;   (list kind name body summary [source])
-;   kind: "mutate" | "skip"
-;   source: "rule" | "llm-stub" | "llm-live"
+;   kind   : "mutate" | "skip"
+;   name   : non-empty string (binding to rebind)
+;   body   : "" if skip; else must look like (lambda ...)
+;   summary: string
+;   source : "rule" | "llm-stub" | "llm-live" | ...
 ;
-; Modes via (aether:propose-mode) reading env AETHER_LLM_PROPOSE:
-;   unset / "0" / "rule"  → pure Aura rules (default denseness PASS)
-;   "stub"                → pretend LLM path; bumps escapes; no network
-;   "1" / "live"          → try std/llm if LLM_API_KEY set; else stub
-;
-; Executor must remain pure aether-min. Escapes only on this edge.
+; Schema validation runs before any mutation. Invalid proposals are
+; refused without touching the workspace (core denseness: E cannot
+; inject unstructured code into the hot path).
 
 (export aether:propose-mode
         aether:propose-rule
@@ -21,8 +21,12 @@
         aether:proposal-name
         aether:proposal-body
         aether:proposal-summary
-        aether:proposal-source)
+        aether:proposal-source
+        aether:proposal-valid?
+        aether:proposal-errors
+        aether:execute-proposal)
 
+(require "std/string" all:)
 (require "aether-min" all:)
 
 (define (aether:proposal-kind p) (car p))
@@ -34,7 +38,6 @@
     "rule"
     (car (cdr (cdr (cdr (cdr p)))))))
 
-; Read propose mode from env (void/empty → rule).
 (define (aether:propose-mode)
   (let ((v (getenv "AETHER_LLM_PROPOSE")))
     (if (or (void? v) (not (string? v)) (equal? v "") (equal? v "0") (equal? v "rule"))
@@ -45,9 +48,51 @@
           "stub"
           "rule")))))
 
-; Pure rule table — zero escapes.
-; fails: number, mode: "auto" | "deny-all" | "noop" | "widen"
-; max-fails: business budget threshold
+; ── Schema ───────────────────────────────────────────────────
+
+(define (aether-body-ok? body)
+  (and (string? body)
+       (> (string-length body) 8)
+       (string-prefix? body "(lambda")
+       (string-contains? body ")")))
+
+(define (aether:proposal-errors p)
+  (if (not (pair? p))
+    (list "not-a-list")
+    (if (null? (cdr (cdr (cdr p))))
+      (list "too-short")
+      (let ((kind (aether:proposal-kind p))
+            (name (aether:proposal-name p))
+            (body (aether:proposal-body p))
+            (summary (aether:proposal-summary p))
+            (errs (quote ())))
+        ; kind
+        (if (not (or (equal? kind "mutate") (equal? kind "skip")))
+          (set! errs (cons "bad-kind" errs))
+          #f)
+        ; name
+        (if (or (not (string? name)) (equal? name ""))
+          (set! errs (cons "bad-name" errs))
+          #f)
+        ; summary
+        (if (not (string? summary))
+          (set! errs (cons "bad-summary" errs))
+          #f)
+        ; body by kind
+        (if (equal? kind "skip")
+          (if (not (string? body))
+            (set! errs (cons "bad-skip-body" errs))
+            #f)
+          (if (not (aether-body-ok? body))
+            (set! errs (cons "bad-mutate-body" errs))
+            #f))
+        errs))))
+
+(define (aether:proposal-valid? p)
+  (null? (aether:proposal-errors p)))
+
+; ── Propose (rule / stub / live) ─────────────────────────────
+
 (define (aether:propose-rule fails max-fails mode)
   (if (equal? mode "deny-all")
     (list "mutate" "gate" "(lambda (x) #f)" "rule-deny-all" "rule")
@@ -59,8 +104,6 @@
           (list "mutate" "gate" "(lambda (x) (< x 7))" "rule-auto-widen" "rule")
           (list "skip" "gate" "" "rule-auto-noop" "rule"))))))
 
-; Stub LLM path: same structured proposal as rules, but marks an escape
-; on the propose edge (no network). Used for denseness E metering demos.
 (define (aether-propose-stub fails max-fails mode)
   (aether:stats-bump! "escapes")
   (let ((p (aether:propose-rule fails max-fails mode)))
@@ -70,27 +113,21 @@
           (string-append "llm-stub:" (car (cdr (cdr (cdr p)))))
           "llm-stub")))
 
-; Live LLM: attempt chat; on any failure fall back to stub-shaped rule
-; with source llm-live or llm-fallback. Always bumps escapes when entered.
 (define (aether-propose-live fails max-fails mode)
   (aether:stats-bump! "escapes")
   (try
     (begin
       (require "std/llm" all:)
       (let ((key (getenv "LLM_API_KEY")))
-        (if (or (void? key) (not (string? key)) (equal? key ""))
-          ; no key → structured fallback still on propose edge
-          (let ((p (aether:propose-rule fails max-fails mode)))
+        (let ((p (aether:propose-rule fails max-fails mode)))
+          (if (or (void? key) (not (string? key)) (equal? key ""))
             (list (car p) (car (cdr p)) (car (cdr (cdr p)))
                   (string-append "llm-nokey:" (car (cdr (cdr (cdr p)))))
-                  "llm-live"))
-          ; Live call is intentionally minimal: we do not parse free-form
-          ; code into production mutations without a schema. For denseness
-          ; we record the escape and still return a rule proposal so the
-          ; executor path stays deterministic in CI.
-          (let ((p (aether:propose-rule fails max-fails mode)))
+                  "llm-live")
+            ; Live path: escape recorded; still emit schema-valid rule
+            ; proposal until free-form LLM parse is schema-gated.
             (list (car p) (car (cdr p)) (car (cdr (cdr p)))
-                  (string-append "llm-live-unparsed:" (car (cdr (cdr (cdr p)))))
+                  (string-append "llm-live-schema:" (car (cdr (cdr (cdr p)))))
                   "llm-live")))))
     (catch (e)
       (let ((p (aether:propose-rule fails max-fails mode)))
@@ -98,7 +135,6 @@
               "llm-error-fallback"
               "llm-live")))))
 
-; Public entry: dispatch by mode.
 (define (aether:propose fails max-fails mode)
   (let ((pm (aether:propose-mode)))
     (if (equal? pm "stub")
@@ -106,3 +142,28 @@
       (if (equal? pm "live")
         (aether-propose-live fails max-fails mode)
         (aether:propose-rule fails max-fails mode)))))
+
+; ── Execute only if schema-valid ─────────────────────────────
+; verify-check: 0-arg → bool (#t to accept post-mutation state)
+(define (aether:execute-proposal proposal observe-probe need-mutate? verify-check)
+  (if (not (aether:proposal-valid? proposal))
+    (list (cons ":ok" #f)
+          (cons ":decision" 'refuse)
+          (cons ":observation" (try (observe-probe) (catch (e) #f)))
+          (cons ":reason" "schema-invalid")
+          (cons ":errors" (aether:proposal-errors proposal))
+          (cons ":snap" -1))
+    (let ((kind (aether:proposal-kind proposal)))
+      (if (equal? kind "skip")
+        (aether:loop-once observe-probe
+                          (lambda () #f)
+                          (aether:proposal-name proposal)
+                          "(lambda (x) x)"
+                          (aether:proposal-summary proposal)
+                          verify-check)
+        (aether:loop-once observe-probe
+                          need-mutate?
+                          (aether:proposal-name proposal)
+                          (aether:proposal-body proposal)
+                          (aether:proposal-summary proposal)
+                          verify-check)))))

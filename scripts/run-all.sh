@@ -11,6 +11,7 @@ EXAMPLES=(
   examples/04-hot-strategy-heal/main.aura
   examples/05-long-run-denseness/main.aura
   examples/06-propose-edge-escape/main.aura
+  examples/07-proposal-schema/main.aura
 )
 
 fail=0

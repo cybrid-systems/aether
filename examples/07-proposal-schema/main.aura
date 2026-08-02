@@ -1,0 +1,158 @@
+; examples/07-proposal-schema/main.aura
+;
+; Denseness probe — structured proposal schema before mutation (Axis E).
+;
+; Proves: untrusted proposals (rule / stub / adversarial) are validated;
+; invalid shapes never reach rebind; semantic-bad but schema-valid still
+; rolls back via business verify.
+;
+; Run: ./scripts/run-aura.sh examples/07-proposal-schema/main.aura
+
+(require "std/list" all:)
+(require "aether-min" all:)
+(require "aether-propose" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether 07-proposal-schema: validate before mutate ===")
+(newline)
+
+(define MAX-FAILS 4)
+
+(define installed
+  (aether:install-source "(define gate (lambda (x) (< x 4)))"))
+
+(define (run-batch)
+  (let ((xs (list 1 2 3 4 5 6 7 8 9 10)))
+    (let loop ((ys xs) (ok 0) (bad 0))
+      (if (null? ys)
+        (list ok bad)
+        (if (gate (car ys))
+          (loop (cdr ys) (+ ok 1) bad)
+          (loop (cdr ys) ok (+ bad 1)))))))
+
+(define (fail-count)
+  (car (cdr (run-batch))))
+
+(define (within-budget?)
+  (<= (fail-count) MAX-FAILS))
+
+(display "R0 batch=")
+(display (run-batch))
+(newline)
+
+; ── A: valid rule proposal → execute-proposal commit ──
+(define p-ok #f)
+(define r-ok #f)
+(set! p-ok (aether:propose-rule (fail-count) MAX-FAILS "auto"))
+(display "A valid?=")
+(display (aether:proposal-valid? p-ok))
+(display " errors=")
+(write (aether:proposal-errors p-ok))
+(newline)
+(set! r-ok
+  (aether:execute-proposal
+    p-ok
+    (lambda () (fail-count))
+    (lambda () #t)
+    within-budget?))
+(display "A exec=")
+(write r-ok)
+(newline)
+(display "A batch=")
+(display (run-batch))
+(newline)
+
+(define a-ok
+  (and (aether:proposal-valid? p-ok)
+       (eq? (aether:alist-ref ":decision" r-ok #f) 'commit)
+       (within-budget?)))
+
+; ── B: invalid kind — refuse, no mutation ──
+(define p-bad-kind
+  (list "explode" "gate" "(lambda (x) (< x 7))" "evil" "adversary"))
+(define r-bad-kind #f)
+(define fails-before-b (fail-count))
+(set! r-bad-kind
+  (aether:execute-proposal
+    p-bad-kind
+    (lambda () (fail-count))
+    (lambda () #t)
+    within-budget?))
+(display "B schema refuse=")
+(write r-bad-kind)
+(newline)
+(display "B fails unchanged?=")
+(display (= (fail-count) fails-before-b))
+(newline)
+
+(define b-ok
+  (and (not (aether:proposal-valid? p-bad-kind))
+       (eq? (aether:alist-ref ":decision" r-bad-kind #f) 'refuse)
+       (equal? (aether:alist-ref ":reason" r-bad-kind "") "schema-invalid")
+       (= (fail-count) fails-before-b)))
+
+; ── C: invalid body (not lambda) — refuse ──
+(define p-bad-body
+  (list "mutate" "gate" "DELETE FROM gates" "sql-injection" "adversary"))
+(define r-bad-body #f)
+(set! r-bad-body
+  (aether:execute-proposal
+    p-bad-body
+    (lambda () (fail-count))
+    (lambda () #t)
+    within-budget?))
+(display "C bad-body refuse=")
+(write r-bad-body)
+(newline)
+
+(define c-ok
+  (and (not (aether:proposal-valid? p-bad-body))
+       (eq? (aether:alist-ref ":decision" r-bad-body #f) 'refuse)
+       (within-budget?)))
+
+; ── D: schema-valid but semantically bad → rollback ──
+(define p-deny
+  (list "mutate" "gate" "(lambda (x) #f)" "deny-all" "adversary"))
+(define r-deny #f)
+(set! r-deny
+  (aether:execute-proposal
+    p-deny
+    (lambda () (fail-count))
+    (lambda () #t)
+    within-budget?))
+(display "D semantic-bad exec=")
+(write r-deny)
+(newline)
+(display "D batch=")
+(display (run-batch))
+(newline)
+
+(define d-ok
+  (and (aether:proposal-valid? p-deny)
+       (eq? (aether:alist-ref ":decision" r-deny #f) 'rollback)
+       (within-budget?)
+       (= (fail-count) 4)))
+
+(display "stats ")
+(write (aether:stats-alist))
+(newline)
+
+(define all-ok
+  (and installed a-ok b-ok c-ok d-ok
+       (aether:safety-ok?)
+       (= (aether:stats-ref "escapes") 0)))
+
+(if all-ok
+  (begin
+    (display "PASS: proposal schema gate (invalid refuse; bad semantics rollback)")
+    (newline)
+    (display "escapes: 0; unstructured proposals never rebind")
+    (newline))
+  (begin
+    (display "FAIL")
+    (newline)
+    (display (list a-ok b-ok c-ok d-ok
+                   (run-batch)
+                   (aether:stats-alist)))
+    (newline)))
