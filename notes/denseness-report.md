@@ -2,7 +2,8 @@
 
 **Date:** 2026-08-02  
 **Host:** Aura (local `aura-grok` build) with fixes #2566–#2570  
-**Surface:** `lib/aether-min.aura` + examples 01–05  
+**Surface:** `lib/aether-min` + `aether-domain` + `aether-propose` + examples 01–09  
+**Last offline suite:** `notes/last-run-report.md` (8/8)
 
 ## Claim under test
 
@@ -15,7 +16,7 @@ escapes \(E\) on the world/propose edge only.
 | Probe | Axes | Result | Evolvable-core escapes |
 |-------|------|--------|-------------------------|
 | [01-single-loop](../examples/01-single-loop/) | A B F | PASS commit/skip/rollback | 0 |
-| [02-business-signal](../examples/02-business-signal/) | A B F | PASS fail-rate decide | 0 |
+| [02-business-signal](../examples/02-business-signal/) | A B F | PASS fail-rate decide (`aether-domain`) | 0 |
 | [03-researcher-executor](../examples/03-researcher-executor/) | A B C E | PASS dual-role; propose pure-Aura | 0 (LLM not required) |
 | [04-hot-strategy-heal](../examples/04-hot-strategy-heal/) | A B D F | PASS hot deploy + self-heal | 0 |
 | [05-long-run-denseness](../examples/05-long-run-denseness/) | all smoke | PASS N=10 deploy/skip/poison-heal | 0 |
@@ -23,6 +24,7 @@ escapes \(E\) on the world/propose edge only.
 | [07-proposal-schema](../examples/07-proposal-schema/) | E | PASS schema refuse + semantic rollback | 0 |
 | [08-parse-proposal-wire](../examples/08-parse-proposal-wire/) | E | PASS wire parse from prose; garbage/illegal refuse | 0 core / ≥1 sim-escape |
 | [09-live-minimax](../examples/09-live-minimax/) | E | PASS MiniMax-M3 live propose (manual; needs key) | 0 core / ≥1 live HTTPS |
+| [10-long-n-stress](../examples/10-long-n-stress/) | A B D F | PASS N=50 poison/heal cadence; safety-ok | 0 |
 
 ## Metrics (practical denseness criteria)
 
@@ -32,7 +34,7 @@ escapes \(E\) on the world/propose edge only.
 | Escape on decide/verify/rollback hot path | No | **None** |
 | Safe-path rollback reliability | ≈100% | Bad proposals / poison recovered via snapshot or last-good |
 | Per-round observability | Full | `aether:stats-alist` + example logs |
-| Multi-round boundary health | N≥10 | Example 05 N=10; `aether:safety-ok?` at end |
+| Multi-round boundary health | N≥10 | Example 05 N=10; example 10 N=50; `aether:safety-ok?` at end |
 
 ## Escape inventory
 
@@ -72,8 +74,13 @@ core escapes and recoverable failure paths.
 This does **not** claim denseness over all of \(S_{\mathrm{practical}}\)
 (numerical hot paths, hard realtime, drivers, etc.).
 
+## Library factoring (post Phase 1–2)
+
+- **`aether-domain`** — shared admit-gate workload (1..10, fails≤4) used by probes 02–03, 05–09 so examples no longer copy-paste batch/fail helpers.
+- **`aether-propose`** — schema + wire parse + rule/stub/live propose; string/schema helpers **inlined** into public entry points so free-vars survive workspace rebind (host free-var breakage across mutate).
+
 ## Next measurements
 
-- Wire optional LLM propose edge and measure \(E\) rate/cost.
-- Longer N (100+) and multi-tenant region isolation if product needs it.
+- N=100+ optional if product needs longer soak; multi-tenant region isolation if needed.
+- Axis C deeper: arbitrated multi-agent (beyond dual-role functions).
 - Split `aether-min` into axis modules once host module packaging is fully stable.

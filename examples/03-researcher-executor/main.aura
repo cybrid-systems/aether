@@ -1,79 +1,54 @@
 ; examples/03-researcher-executor/main.aura
-;
-; Phase 1 denseness probe — dual-role closed loop (Axes A+B+C+E).
-;
-; researcher — propose edge (pure-Aura rules; LLM optional later, not for PASS)
-; executor   — aether-min guards + business verify (evolvable core)
-;
+; Dual-role: researcher propose + executor guard (uses aether-domain).
 ; Run: ./scripts/run-aura.sh examples/03-researcher-executor/main.aura
 
 (require "std/list" all:)
 (require "aether-min" all:)
+(require "aether-domain" all:)
 
 (aether:stats-reset!)
 
 (display "=== Aether 03-researcher-executor: dual-role closed loop ===")
 (newline)
 
-(define MAX-FAILS 4)
-
-(define installed
-  (aether:install-source "(define gate (lambda (x) (< x 4)))"))
-
+(define installed (aether:gate-install-strict))
 (display "installed=")
 (display installed)
 (display " gate=")
 (display (list (gate 3) (gate 4) (gate 7)))
 (newline)
 
-(define (run-batch)
-  (let ((xs (list 1 2 3 4 5 6 7 8 9 10)))
-    (let loop ((ys xs) (ok 0) (bad 0))
-      (if (null? ys)
-        (list ok bad)
-        (if (gate (car ys))
-          (loop (cdr ys) (+ ok 1) bad)
-          (loop (cdr ys) ok (+ bad 1)))))))
-
-(define (fail-count)
-  (car (cdr (run-batch))))
-
-(define (within-budget?)
-  (<= (fail-count) MAX-FAILS))
-
 ; Researcher: propose edge only. Returns (list kind name body summary).
 (define (researcher-propose fails mode)
   (if (equal? mode "deny-all")
-    (list "mutate" "gate" "(lambda (x) #f)" "research-deny-all")
-    (if (> fails MAX-FAILS)
-      (list "mutate" "gate" "(lambda (x) (< x 7))" "research-auto-widen")
+    (list "mutate" "gate" aether:gate-body-deny "research-deny-all")
+    (if (> fails 4)
+      (list "mutate" "gate" aether:gate-body-widen "research-auto-widen")
       (list "skip" "gate" "" "research-auto-noop"))))
 
-; Executor: untrusted proposal → loop-once under verify.
 (define (executor-run kind name body summary)
   (if (equal? kind "skip")
     (aether:loop-once
-      (lambda () (fail-count))
+      (lambda () (aether:gate-fail-count))
       (lambda () #f)
       "gate"
-      "(lambda (x) (< x 7))"
+      aether:gate-body-widen
       "exec-skip"
-      within-budget?)
+      aether:gate-within-budget?)
     (aether:loop-once
-      (lambda () (fail-count))
+      (lambda () (aether:gate-fail-count))
       (lambda () #t)
       name
       body
       summary
-      within-budget?)))
+      aether:gate-within-budget?)))
 
 (display "R0 batch=")
-(display (run-batch))
+(display (aether:gate-run-batch))
 (display " fails=")
-(display (fail-count))
+(display (aether:gate-fail-count))
 (newline)
 
-; Predeclare result cells (set! after call — host-friendlier than define-from-call).
 (define p1 #f)
 (define r1 #f)
 (define p2 #f)
@@ -81,8 +56,7 @@
 (define p3 #f)
 (define r3 #f)
 
-; ── Round 1: researcher auto-widen → executor commit ──
-(set! p1 (researcher-propose (fail-count) "auto"))
+(set! p1 (researcher-propose (aether:gate-fail-count) "auto"))
 (display "R1 proposal=")
 (write p1)
 (newline)
@@ -91,11 +65,10 @@
 (write r1)
 (newline)
 (display "R1 batch=")
-(display (run-batch))
+(display (aether:gate-run-batch))
 (newline)
 
-; ── Round 2: researcher auto (should skip) → executor skip ──
-(set! p2 (researcher-propose (fail-count) "auto"))
+(set! p2 (researcher-propose (aether:gate-fail-count) "auto"))
 (display "R2 proposal=")
 (write p2)
 (newline)
@@ -104,8 +77,7 @@
 (write r2)
 (newline)
 
-; ── Round 3: researcher deny-all → executor rollback ──
-(set! p3 (researcher-propose (fail-count) "deny-all"))
+(set! p3 (researcher-propose (aether:gate-fail-count) "deny-all"))
 (display "R3 proposal=")
 (write p3)
 (newline)
@@ -114,14 +86,11 @@
 (write r3)
 (newline)
 (display "R3 batch=")
-(display (run-batch))
+(display (aether:gate-run-batch))
 (newline)
 
 (display "stats ")
 (write (aether:stats-alist))
-(newline)
-(display "boundary/quota ok=")
-(display (aether:safety-ok?))
 (newline)
 
 (define all-ok
@@ -131,8 +100,8 @@
        (eq? (aether:alist-ref ":decision" r1 #f) 'commit)
        (eq? (aether:alist-ref ":decision" r2 #f) 'skip)
        (eq? (aether:alist-ref ":decision" r3 #f) 'rollback)
-       (within-budget?)
-       (= (fail-count) 4)
+       (aether:gate-within-budget?)
+       (= (aether:gate-fail-count) 4)
        (= (aether:stats-ref "commits") 1)
        (>= (aether:stats-ref "rollbacks") 1)
        (>= (aether:stats-ref "decide-skip") 1)
@@ -152,11 +121,4 @@
     (display "FAIL")
     (newline)
     (display "RESULT fail example=03-researcher-executor")
-    (newline)
-    (display (list (car p1) (car p2) (car p3)
-                   (aether:alist-ref ":decision" r1 #f)
-                   (aether:alist-ref ":decision" r2 #f)
-                   (aether:alist-ref ":decision" r3 #f)
-                   (fail-count)
-                   (aether:stats-alist)))
     (newline)))

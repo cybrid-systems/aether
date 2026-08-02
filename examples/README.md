@@ -18,6 +18,7 @@ Each example is a **runnable denseness probe**. Convention:
 | `06-propose-edge-escape` | Meter \(E\) on propose edge |
 | `07-proposal-schema` | Schema before rebind |
 | `08-parse-proposal-wire` | Wire parse → schema → exec |
+| `10-long-n-stress` | N=50 poison/heal denseness stress |
 
 ## Live (not in run-all)
 

@@ -1,14 +1,12 @@
 ; examples/09-live-minimax/main.aura
-;
-; Live denseness probe — MiniMax-M3 on the propose edge only.
+; Live MiniMax-M3 propose edge (aether-domain).
 ;
 ;   source ./scripts/env-minimax.sh
 ;   ./scripts/run-aura.sh examples/09-live-minimax/main.aura
-;
-; Not in run-all.sh (needs network + key).
 
 (require "std/list" all:)
 (require "aether-min" all:)
+(require "aether-domain" all:)
 (require "aether-propose" all:)
 
 (aether:stats-reset!)
@@ -16,7 +14,6 @@
 (display "=== Aether 09-live-minimax: MiniMax-M3 propose edge ===")
 (newline)
 
-(define MAX-FAILS 4)
 (define key (getenv "LLM_API_KEY"))
 (define base (getenv "LLM_BASE_URL"))
 (define model (getenv "LLM_MODEL"))
@@ -35,30 +32,13 @@
   (begin
     (display "FAIL: LLM_API_KEY not set (source scripts/env-minimax.sh)")
     (newline)
-    (display "RESULT fail example=09-live-minimax")
+    (display "RESULT fail example=09-live-minimax reason=no-key")
     (newline))
   (begin
-    (define installed
-      (aether:install-source "(define gate (lambda (x) (< x 4)))"))
-
-    (define (run-batch)
-      (let ((xs (list 1 2 3 4 5 6 7 8 9 10)))
-        (let loop ((ys xs) (ok 0) (bad 0))
-          (if (null? ys)
-            (list ok bad)
-            (if (gate (car ys))
-              (loop (cdr ys) (+ ok 1) bad)
-              (loop (cdr ys) ok (+ bad 1)))))))
-
-    (define (fail-count)
-      (car (cdr (run-batch))))
-
-    (define (within-budget?)
-      ; literal 4 — free-var MAX-FAILS can go stale after rebind on host
-      (<= (fail-count) 4))
+    (define installed (aether:gate-install-strict))
 
     (display "R0 batch=")
-    (display (run-batch))
+    (display (aether:gate-run-batch))
     (newline)
 
     (define p1 #f)
@@ -67,8 +47,11 @@
     (define p1-esc 0)
     (define p2 #f)
     (define r2 #f)
+    (define final-batch #f)
+    (define fc 99)
+    (define safe #f)
 
-    (set! p1 (aether:propose (fail-count) MAX-FAILS "auto"))
+    (set! p1 (aether:propose (aether:gate-fail-count) 4 "auto"))
     (set! p1-src (aether:proposal-source p1))
     (set! p1-esc (aether:stats-ref "escapes"))
     (display "P1=")
@@ -83,23 +66,23 @@
     (set! r1
       (aether:execute-proposal
         p1
-        (lambda () (fail-count))
+        (lambda () (aether:gate-fail-count))
         (lambda () #t)
-        within-budget?))
+        aether:gate-within-budget?))
     (display "P1-exec=")
     (write r1)
     (newline)
     (display "P1-batch=")
-    (display (run-batch))
+    (display (aether:gate-run-batch))
     (newline)
 
-    (set! p2 (aether:propose (fail-count) MAX-FAILS "auto"))
+    (set! p2 (aether:propose (aether:gate-fail-count) 4 "auto"))
     (set! r2
       (aether:execute-proposal
         p2
-        (lambda () (fail-count))
-        (lambda () (not (within-budget?)))
-        within-budget?))
+        (lambda () (aether:gate-fail-count))
+        (lambda () (not (aether:gate-within-budget?)))
+        aether:gate-within-budget?))
     (display "P2=")
     (write p2)
     (newline)
@@ -107,14 +90,10 @@
     (write r2)
     (newline)
     (display "P2-batch=")
-    (display (run-batch))
+    (display (aether:gate-run-batch))
     (newline)
 
-    ; Use set! only after mutations — host define can re-materialize set-code seed.
-    (define final-batch #f)
-    (define fc 99)
-    (define safe #f)
-    (set! final-batch (run-batch))
+    (set! final-batch (aether:gate-run-batch))
     (set! fc (car (cdr final-batch)))
     (set! safe (aether:safety-ok?))
     (display "final-batch=")
@@ -125,7 +104,6 @@
     (display safe)
     (newline)
 
-    ; PASS: live escape recorded; end state has fails <= 4.
     (if (and installed
              (number? p1-esc)
              (> p1-esc 0)
@@ -135,11 +113,13 @@
              safe)
       (begin
         (display "PASS: MiniMax-M3 live propose edge (E>=1; core guarded)")
+        (newline)
+        (display "RESULT pass example=09-live-minimax live_escapes=1")
         (newline))
       (begin
         (display "FAIL")
         (newline)
-        (display "RESULT pass example=09-live-minimax live_escapes=1")
+        (display "RESULT fail example=09-live-minimax")
         (newline)
         (display (list p1-esc p1-src fc safe final-batch))
         (newline)))))

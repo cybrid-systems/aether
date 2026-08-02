@@ -1,18 +1,7 @@
-; lib/aether-propose.aura — Propose edge + proposal schema (Axis E)
+; lib/aether-propose.aura — Propose edge + schema + wire parse (Axis E)
 ;
-; (require "aether-propose" all:)
-;
-; Proposal list (untrusted):
-;   (list kind name body summary [source])
-;   kind   : "mutate" | "skip"
-;   name   : non-empty string (binding to rebind)
-;   body   : "" if skip; else must look like (lambda ...)
-;   summary: string
-;   source : "rule" | "llm-stub" | "llm-live" | ...
-;
-; Schema validation runs before any mutation. Invalid proposals are
-; refused without touching the workspace (core denseness: E cannot
-; inject unstructured code into the hot path).
+; Internals that call string helpers after workspace rebind are inlined into
+; public entry points (host free-var breakage across mutate).
 
 (export aether:propose-mode
         aether:propose-rule
@@ -30,7 +19,6 @@
 
 (require "std/string" all:)
 (require "aether-min" all:)
-; std/llm is loaded only inside aether-propose-live (keeps offline examples light).
 
 (define (aether:proposal-kind p) (car p))
 (define (aether:proposal-name p) (car (cdr p)))
@@ -51,57 +39,43 @@
           "stub"
           "rule")))))
 
-; ── Schema ───────────────────────────────────────────────────
-
-; Strict body: pure lambda on x only — no free calls into workspace.
-(define (aether-body-banned? body)
-  (or (string-contains? body "gate")
-      (string-contains? body "fail-count")
-      (string-contains? body "max-fails")
-      (string-contains? body "widen")
-      (string-contains? body "define")
-      (string-contains? body "set!")
-      (string-contains? body "require")
-      (string-contains? body "eval")
-      (string-contains? body "load")))
-
-(define (aether-body-ok? body)
-  (and (string? body)
-       (> (string-length body) 8)
-       (< (string-length body) 120)
-       (string-prefix? body "(lambda")
-       (string-contains? body "x")
-       (string-contains? body ")")
-       (not (aether-body-banned? body))))
+; ── Schema (inlined body checks — no helper free-vars after rebind) ──
 
 (define (aether:proposal-errors p)
   (if (not (pair? p))
     (list "not-a-list")
     (if (null? (cdr (cdr (cdr p))))
       (list "too-short")
-      (let ((kind (aether:proposal-kind p))
-            (name (aether:proposal-name p))
-            (body (aether:proposal-body p))
-            (summary (aether:proposal-summary p))
+      (let ((kind (car p))
+            (name (car (cdr p)))
+            (body (car (cdr (cdr p))))
+            (summary (car (cdr (cdr (cdr p)))))
             (errs (quote ())))
-        ; kind
         (if (not (or (equal? kind "mutate") (equal? kind "skip")))
           (set! errs (cons "bad-kind" errs))
           #f)
-        ; name
         (if (or (not (string? name)) (equal? name ""))
           (set! errs (cons "bad-name" errs))
           #f)
-        ; summary
         (if (not (string? summary))
           (set! errs (cons "bad-summary" errs))
           #f)
-        ; body by kind
         (if (equal? kind "skip")
           (if (not (string? body))
             (set! errs (cons "bad-skip-body" errs))
             #f)
-          (if (not (aether-body-ok? body))
+          (if (not (and (string? body)
+                        (> (string-length body) 8)
+                        (< (string-length body) 120)
+                        (string-prefix? body "(lambda")
+                        (string-contains? body "x")
+                        (string-contains? body ")")
+                        (not (string-contains? body "gate"))
+                        (not (string-contains? body "fail-count"))
+                        (not (string-contains? body "define"))
+                        (not (string-contains? body "set!"))
+                        (not (string-contains? body "require"))
+                        (not (string-contains? body "eval"))))
             (set! errs (cons "bad-mutate-body" errs))
             #f))
         errs))))
@@ -109,75 +83,49 @@
 (define (aether:proposal-valid? p)
   (null? (aether:proposal-errors p)))
 
-; ── Wire format for LLM / external propose edge ──────────────
-; Single line (no '|' inside body):
-;   MUTATE|<name>|<body>|<summary>
-;   SKIP|<name>||<summary>
-; Parser takes first non-empty line; ignores surrounding prose.
-
-(define (aether-num-str n)
-  (if (number? n) (number->string n) "0"))
+; ── Wire parse ───────────────────────────────────────────────
 
 (define (aether:proposal-prompt fails max-fails)
-  ; Nested append — some hosts truncate multi-arg string-append.
   (string-append
     (string-append
-      "Return ONLY one line: MUTATE|gate|(lambda (x) ...)|summary OR SKIP|gate||summary. fail-count="
-      (aether-num-str fails))
+      "Return ONLY one line: MUTATE|gate|(lambda (x) (< x N))|summary OR SKIP|gate||summary. fail-count="
+      (if (number? fails) (number->string fails) "0"))
     (string-append
       " max-fails="
-      (string-append (aether-num-str max-fails)
-                     ". Widen when over budget; skip when healthy."))))
+      (string-append (if (number? max-fails) (number->string max-fails) "0")
+                     ". Body must only use x and numbers. Widen when over budget."))))
 
-; Prefer answer-at-end: only the last ~240 chars (keeps <think> noise out).
-(define (aether-tail s n)
-  (if (not (string? s))
-    ""
-    (let ((len (string-length s)))
-      (if (<= len n)
-        s
-        (substring s (- len n) len)))))
-
-(define (aether-wire-line s)
-  (if (not (string? s))
-    ""
-    (let ((parts (string-split (aether-tail s 240) "\n")))
-      (let loop ((xs parts))
-        (cond
-          ((null? xs) "")
-          ((equal? (car xs) "") (loop (cdr xs)))
-          ((> (string-length (car xs)) 200) (loop (cdr xs)))
-          ((or (string-prefix? (car xs) "MUTATE|")
-               (string-prefix? (car xs) "mutate|")
-               (string-prefix? (car xs) "SKIP|")
-               (string-prefix? (car xs) "skip|"))
-           (car xs))
-          (else (loop (cdr xs))))))))
-
-(define (aether-norm-kind k)
-  (if (or (equal? k "MUTATE") (equal? k "mutate") (equal? k "Mutate"))
-    "mutate"
-    (if (or (equal? k "SKIP") (equal? k "skip") (equal? k "Skip"))
-      "skip"
-      k)))
-
-; Parse external text → proposal list or #f
 (define (aether:parse-proposal-text text source)
   (if (not (string? text))
     #f
-    (let ((line (aether-wire-line text)))
-      (if (or (equal? line "") (not (string-contains? line "|")))
-        #f
-        (let ((parts (string-split line "|")))
-          (if (< (length parts) 4)
-            #f
-            (list (aether-norm-kind (list-ref parts 0))
-                  (list-ref parts 1)
-                  (list-ref parts 2)
-                  (list-ref parts 3)
-                  (if (string? source) source "parsed"))))))))
+    (let ((len (string-length text)))
+      (let ((tail (if (<= len 240) text (substring text (- len 240) len))))
+        (let ((parts (string-split tail "\n")))
+          (let loop ((xs parts))
+            (cond
+              ((null? xs) #f)
+              ((equal? (car xs) "") (loop (cdr xs)))
+              ((> (string-length (car xs)) 200) (loop (cdr xs)))
+              ((or (string-prefix? (car xs) "MUTATE|")
+                   (string-prefix? (car xs) "mutate|")
+                   (string-prefix? (car xs) "SKIP|")
+                   (string-prefix? (car xs) "skip|"))
+               (let ((bits (string-split (car xs) "|")))
+                 (if (< (length bits) 4)
+                   #f
+                   (let ((k0 (list-ref bits 0)))
+                     (list (if (or (equal? k0 "MUTATE") (equal? k0 "mutate"))
+                             "mutate"
+                             (if (or (equal? k0 "SKIP") (equal? k0 "skip"))
+                               "skip"
+                               k0))
+                           (list-ref bits 1)
+                           (list-ref bits 2)
+                           (list-ref bits 3)
+                           (if (string? source) source "parsed"))))))
+              (else (loop (cdr xs))))))))))
 
-; ── Propose (rule / stub / live) ─────────────────────────────
+; ── Propose ──────────────────────────────────────────────────
 
 (define *body-deny* "(lambda (x) #f)")
 (define *body-widen* "(lambda (x) (< x 7))")
@@ -204,17 +152,6 @@
           (string-append "llm-stub:" (car (cdr (cdr (cdr p)))))
           "llm-stub")))
 
-; Extract text content from llm:chat result (hash or string).
-(define (aether-llm-content resp)
-  (cond
-    ((string? resp) resp)
-    ((hash? resp)
-     (if (hash-ref resp "ok" #f)
-       (let ((c (hash-ref resp "content" "")))
-         (if (string? c) c ""))
-       ""))
-    (else "")))
-
 (define (aether-propose-live fails max-fails mode)
   (aether:stats-bump! "escapes")
   (let ((fallback (aether:propose-rule fails max-fails mode))
@@ -225,15 +162,22 @@
             "llm-nokey"
             "llm-live")
       (begin
-        ; Load LLM surface on demand (not at module import).
         (require "std/llm" all:)
         (let ((resp
                 (try
                   (llm:chat
-                    "Reply with EXACTLY one line only: MUTATE|gate|(lambda (x) EXPRESSION)|summary OR SKIP|gate||summary. No markdown. No analysis."
+                    "Reply with EXACTLY one line: MUTATE|gate|(lambda (x) (< x N))|summary OR SKIP|gate||summary. N integer 1-10. No other calls. No markdown."
                     (aether:proposal-prompt fails max-fails))
                   (catch (e) #f))))
-          (let ((text (aether-llm-content resp)))
+          (let ((text
+                  (if (string? resp)
+                    resp
+                    (if (hash? resp)
+                      (if (hash-ref resp "ok" #f)
+                        (let ((c (hash-ref resp "content" "")))
+                          (if (string? c) c ""))
+                        "")
+                      ""))))
             (let ((parsed (aether:parse-proposal-text text "llm-live")))
               (if (and (pair? parsed) (aether:proposal-valid? parsed))
                 parsed
@@ -250,8 +194,6 @@
         (aether-propose-live fails max-fails mode)
         (aether:propose-rule fails max-fails mode)))))
 
-; ── Execute only if schema-valid ─────────────────────────────
-; verify-check: 0-arg → bool (#t to accept post-mutation state)
 (define (aether:execute-proposal proposal observe-probe need-mutate? verify-check)
   (if (not (aether:proposal-valid? proposal))
     (list (cons ":ok" #f)
@@ -260,17 +202,17 @@
           (cons ":reason" "schema-invalid")
           (cons ":errors" (aether:proposal-errors proposal))
           (cons ":snap" -1))
-    (let ((kind (aether:proposal-kind proposal)))
+    (let ((kind (car proposal)))
       (if (equal? kind "skip")
         (aether:loop-once observe-probe
                           (lambda () #f)
-                          (aether:proposal-name proposal)
+                          (car (cdr proposal))
                           "(lambda (x) x)"
-                          (aether:proposal-summary proposal)
+                          (car (cdr (cdr (cdr proposal))))
                           verify-check)
         (aether:loop-once observe-probe
                           need-mutate?
-                          (aether:proposal-name proposal)
-                          (aether:proposal-body proposal)
-                          (aether:proposal-summary proposal)
+                          (car (cdr proposal))
+                          (car (cdr (cdr proposal)))
+                          (car (cdr (cdr (cdr proposal))))
                           verify-check)))))

@@ -101,29 +101,26 @@ notes/denseness-report.md
 
 ## Phase plan
 
-### Phase 1
+### Phase 1–2 (landed)
 
 **Examples 01–09 — denseness probe suite**
 
-- `01`–`08` offline (`./scripts/run-all.sh`)  
+- `01`–`08` offline (`./scripts/run-all.sh` / `./scripts/report.sh`)  
 - `09` live MiniMax-M3: `source ./scripts/env-minimax.sh` then run-aura  
-- Libs: `aether-min`, `aether-propose`  
+- Libs: `aether-min`, `aether-domain` (shared gate), `aether-propose` (schema/wire/live)  
 - Key: `~/code/keys/minimax`; base `https://api.minimaxi.com/v1`; model `MiniMax-M3`  
 
 Host prerequisites: Aura #2566–#2570.
 
-**Optional next**
+Phase 1–2 success bar: majority of evolvable core in pure Aura; full observe/rollback;
+escape log honest; business-logic escape rate aimed &lt; 10–15%. Met offline 8/8 + live 09.
 
-- Split `aether-min` into axis modules  
-- Longer N / multi-tenant if product needs  
+### Phase 3
 
-Phase 1 success bar: majority of evolvable core in pure Aura; full observe/rollback;
-escape log honest; business-logic escape rate aimed &lt; 10–15%.
-
-### Phase 2
-
-- **04** — hot strategy + self-heal (axis D)  
-- **05** — long-run harness + first `notes/denseness-report.md`  
+- **10** — longer-N denseness stress (N=50 poison/heal) — landed  
+- Axis C next: arbitrated multi-agent (beyond dual-role)  
+- Optional: split `aether-min` into axis modules when packaging is stable  
+- Multi-tenant region isolation only if product needs it  
 
 ### Later / not Aether’s job alone
 

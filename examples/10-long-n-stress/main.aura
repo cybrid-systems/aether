@@ -1,0 +1,155 @@
+; examples/10-long-n-stress/main.aura
+; Phase 3: N=50 multi-round denseness stress (aether-domain).
+; Pattern: initial widen, then mostly skip; every 10th round poison+heal.
+; Host notes: pass counters as args (set! free-vars break in rebind closures);
+; pre-define result cells before any mutate, then set! (define-after-mutate is flaky).
+; Run: ./scripts/run-aura.sh examples/10-long-n-stress/main.aura
+
+(require "std/list" all:)
+(require "aether-min" all:)
+(require "aether-domain" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether 10-long-n-stress: N=50 denseness stress ===")
+(newline)
+
+(define N 50)
+; Pre-allocate cells before mutation (define-after-rebind is unreliable on host).
+(define summary #f)
+(define heals 0)
+(define poisons 0)
+(define skips 0)
+(define heal-fails 0)
+(define deploys 0)
+(define all-ok #f)
+(define r0 #f)
+
+(define installed (aether:gate-install-strict))
+
+(display "R0 batch=")
+(display (aether:gate-run-batch))
+(newline)
+
+(set! r0
+  (aether:loop-once
+    (lambda () (aether:gate-fail-count))
+    (lambda () #t)
+    "gate"
+    aether:gate-body-widen
+    "r0-widen"
+    aether:gate-within-budget?))
+(set! deploys 1)
+
+(display "r0=")
+(write r0)
+(display " batch=")
+(display (aether:gate-run-batch))
+(newline)
+
+; run-round returns (list heals poisons skips heal-fails)
+(define (run-round i h p s hf last-good)
+  (if (>= i N)
+    (list h p s hf)
+    (if (= (modulo i 10) 0)
+      (begin
+        (aether:rebind-safe "gate" aether:gate-body-deny "poison")
+        (let ((hr
+               (aether:loop-once
+                 (lambda () (aether:gate-fail-count))
+                 (lambda () #t)
+                 "gate"
+                 last-good
+                 "heal"
+                 aether:gate-within-budget?)))
+          (if (= (modulo i 20) 0)
+            (begin
+              (display "r")
+              (display i)
+              (display " heal=")
+              (write hr)
+              (display " fails=")
+              (display (aether:gate-fail-count))
+              (newline))
+            #f)
+          (if (eq? (aether:alist-ref ":decision" hr #f) 'commit)
+            (run-round (+ i 1) (+ h 1) (+ p 1) s hf last-good)
+            (run-round (+ i 1) h (+ p 1) s (+ hf 1) last-good))))
+      (begin
+        (aether:loop-once
+          (lambda () (aether:gate-fail-count))
+          (lambda () #f)
+          "gate"
+          last-good
+          "skip"
+          aether:gate-within-budget?)
+        (run-round (+ i 1) h p (+ s 1) hf last-good)))))
+
+(set! summary (run-round 1 0 0 0 0 aether:gate-body-widen))
+(set! heals (car summary))
+(set! poisons (car (cdr summary)))
+(set! skips (car (cdr (cdr summary))))
+(set! heal-fails (car (cdr (cdr (cdr summary)))))
+
+(display "final batch=")
+(display (aether:gate-run-batch))
+(newline)
+(display "N=")
+(display N)
+(display " deploys=")
+(display deploys)
+(display " skips=")
+(display skips)
+(display " poisons=")
+(display poisons)
+(display " heals=")
+(display heals)
+(display " heal-fails=")
+(display heal-fails)
+(newline)
+(display "loop-stats ")
+(write (aether:stats-alist))
+(newline)
+(display "safety-ok?=")
+(display (aether:safety-ok?))
+(newline)
+
+(set! all-ok
+  (and installed
+       (aether:gate-within-budget?)
+       (= (aether:gate-fail-count) 4)
+       (>= deploys 1)
+       (>= heals 4)
+       (>= poisons 4)
+       (= heal-fails 0)
+       (>= skips 40)
+       (eq? (aether:alist-ref ":decision" r0 #f) 'commit)
+       (aether:safety-ok?)
+       (= (aether:stats-ref "escapes") 0)
+       (>= (aether:stats-ref "rounds") N)))
+
+(if all-ok
+  (begin
+    (display "PASS: long-N denseness stress (N=50, poison-heal cadence)")
+    (newline)
+    (display "escapes: 0; within budget; safety-ok after N rounds")
+    (newline)
+    (display "RESULT pass example=10-long-n-stress N=50 escapes=0 heals=")
+    (display heals)
+    (display " poisons=")
+    (display poisons)
+    (newline))
+  (begin
+    (display "FAIL: long-N denseness stress")
+    (newline)
+    (display "RESULT fail example=10-long-n-stress N=")
+    (display N)
+    (display " heals=")
+    (display heals)
+    (display " heal-fails=")
+    (display heal-fails)
+    (display " escapes=")
+    (display (aether:stats-ref "escapes"))
+    (display " rounds=")
+    (display (aether:stats-ref "rounds"))
+    (newline)))
