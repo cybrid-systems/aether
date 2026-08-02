@@ -9,6 +9,7 @@
 | `aether-domain` | domain | Shared admit-gate workload (probes 02–12) |
 | `aether-propose` | E | Schema, wire parse, rule/stub/live propose |
 | `aether-orch` | C | Multi-propose arbitrate + yield fanout |
+| `aether-region` | multi-tenant | Dual named gates (`gate-a`/`gate-b`) + per-region batch |
 
 ## Host packaging discipline
 

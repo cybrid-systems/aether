@@ -21,6 +21,7 @@ EXAMPLES=(
   examples/10-long-n-stress/main.aura
   examples/11-arbitrated-multi/main.aura
   examples/12-parallel-yield/main.aura
+  examples/13-multi-tenant-region/main.aura
 )
 
 : >"$RAW"

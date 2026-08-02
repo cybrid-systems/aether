@@ -121,7 +121,8 @@ escape log honest; business-logic escape rate aimed &lt; 10–15%. Met offline 8
 - **11** — arbitrated multi-agent (`aether-orch`) — landed  
 - **12** — parallel+yield fanout (`aether:fanout-with-yield`) — landed  
 - Axis lib split — landed: `aether-mutate-policy` (B); `aether-measure` / `aether-loop` narrow; `aether-min` embeds A+F for post-rebind denseness  
-- Optional next: multi-tenant region isolation if product needs it  
+- **13** — multi-tenant region isolation (`aether-region`) — landed  
+- Optional next: N=100+ soak; true fiber parallel when host fixed  
 
 ### Later / not Aether’s job alone
 

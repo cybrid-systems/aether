@@ -1,0 +1,174 @@
+; examples/13-multi-tenant-region/main.aura
+; Multi-tenant region isolation: mutate gate-a without affecting gate-b.
+; Denseness: name-isolated rebind + per-region verify/heal, pure Aura.
+; Run: ./scripts/run-aura.sh examples/13-multi-tenant-region/main.aura
+
+(require "std/list" all:)
+(require "aether-min" all:)
+(require "aether-region" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether 13-multi-tenant-region: isolated rebind regions ===")
+(newline)
+
+; Pre-allocate cells before mutate.
+(define installed #f)
+(define fa0 0)
+(define fb0 0)
+(define fa1 0)
+(define fb1 0)
+(define fa2 0)
+(define fb2 0)
+(define fa3 0)
+(define fb3 0)
+(define fa4 0)
+(define fb4 0)
+(define r-a #f)
+(define r-heal #f)
+(define r-b #f)
+(define a-ok #f)
+(define b-ok #f)
+(define c-ok #f)
+(define d-ok #f)
+(define all-ok #f)
+
+(set! installed (aether:region-install-pair))
+(set! fa0 (aether:region-fail-count gate-a))
+(set! fb0 (aether:region-fail-count gate-b))
+(display "R0 fails a=")
+(display fa0)
+(display " b=")
+(display fb0)
+(newline)
+
+; ── A: both over budget initially ──
+(set! a-ok
+  (and installed
+       (= fa0 7)
+       (= fb0 7)
+       (not (aether:region-within-budget? gate-a))
+       (not (aether:region-within-budget? gate-b))))
+
+; ── B: widen only gate-a; gate-b must stay at fails=7 ──
+(set! r-a
+  (aether:loop-once
+    (lambda () (aether:region-fail-count gate-a))
+    (lambda () #t)
+    "gate-a"
+    aether:region-body-widen
+    "tenant-a-widen"
+    (lambda () (aether:region-within-budget? gate-a))))
+(set! fa1 (aether:region-fail-count gate-a))
+(set! fb1 (aether:region-fail-count gate-b))
+(display "B widen-a exec=")
+(write r-a)
+(newline)
+(display "B fails a=")
+(display fa1)
+(display " b=")
+(display fb1)
+(newline)
+(set! b-ok
+  (and (eq? (aether:alist-ref ":decision" r-a #f) 'commit)
+       (= fa1 4)
+       (= fb1 7)
+       (aether:region-within-budget? gate-a)
+       (not (aether:region-within-budget? gate-b))))
+
+; ── C: poison gate-a; gate-b still fails=7 (isolation under damage) ──
+(aether:rebind-safe "gate-a" aether:region-body-deny "tenant-a-poison")
+(set! fa2 (aether:region-fail-count gate-a))
+(set! fb2 (aether:region-fail-count gate-b))
+(display "C after poison-a fails a=")
+(display fa2)
+(display " b=")
+(display fb2)
+(newline)
+(set! r-heal
+  (aether:loop-once
+    (lambda () (aether:region-fail-count gate-a))
+    (lambda () #t)
+    "gate-a"
+    aether:region-body-widen
+    "tenant-a-heal"
+    (lambda () (aether:region-within-budget? gate-a))))
+(set! fa3 (aether:region-fail-count gate-a))
+(set! fb3 (aether:region-fail-count gate-b))
+(display "C heal-a exec=")
+(write r-heal)
+(newline)
+(display "C fails a=")
+(display fa3)
+(display " b=")
+(display fb3)
+(newline)
+(set! c-ok
+  (and (= fa2 10)
+       (= fb2 7)
+       (eq? (aether:alist-ref ":decision" r-heal #f) 'commit)
+       (= fa3 4)
+       (= fb3 7)
+       (aether:region-within-budget? gate-a)
+       (not (aether:region-within-budget? gate-b))))
+
+; ── D: widen gate-b independently; both healthy ──
+(set! r-b
+  (aether:loop-once
+    (lambda () (aether:region-fail-count gate-b))
+    (lambda () #t)
+    "gate-b"
+    aether:region-body-widen
+    "tenant-b-widen"
+    (lambda () (aether:region-within-budget? gate-b))))
+(set! fa4 (aether:region-fail-count gate-a))
+(set! fb4 (aether:region-fail-count gate-b))
+(display "D widen-b exec=")
+(write r-b)
+(newline)
+(display "D fails a=")
+(display fa4)
+(display " b=")
+(display fb4)
+(newline)
+(set! d-ok
+  (and (eq? (aether:alist-ref ":decision" r-b #f) 'commit)
+       (= fa4 4)
+       (= fb4 4)
+       (aether:region-within-budget? gate-a)
+       (aether:region-within-budget? gate-b)))
+
+(display "stats ")
+(write (aether:stats-alist))
+(newline)
+
+(set! all-ok
+  (and a-ok b-ok c-ok d-ok
+       (aether:safety-ok?)
+       (= (aether:stats-ref "escapes") 0)
+       (>= (aether:stats-ref "commits") 3)))
+
+(if all-ok
+  (begin
+    (display "PASS: multi-tenant region isolation (gate-a vs gate-b)")
+    (newline)
+    (display "escapes: 0; rebind name-isolated; cross-tenant metrics unchanged")
+    (newline)
+    (display "RESULT pass example=13-multi-tenant-region escapes=0 commits=")
+    (display (aether:stats-ref "commits"))
+    (newline))
+  (begin
+    (display "FAIL: multi-tenant region isolation")
+    (newline)
+    (display " a-ok=")
+    (display a-ok)
+    (display " b-ok=")
+    (display b-ok)
+    (display " c-ok=")
+    (display c-ok)
+    (display " d-ok=")
+    (display d-ok)
+    (newline)
+    (display "RESULT fail example=13-multi-tenant-region escapes=")
+    (display (aether:stats-ref "escapes"))
+    (newline)))

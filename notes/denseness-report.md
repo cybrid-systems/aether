@@ -27,6 +27,7 @@ escapes \(E\) on the world/propose edge only.
 | [10-long-n-stress](../examples/10-long-n-stress/) | A B D F | PASS N=50 poison/heal cadence; safety-ok | 0 |
 | [11-arbitrated-multi](../examples/11-arbitrated-multi/) | C E | PASS multi-propose + arbiter filters deny / prefers skip|widen | 0 |
 | [12-parallel-yield](../examples/12-parallel-yield/) | C | PASS fanout + yield barriers + arbiter; mutate only in executor | 0 |
+| [13-multi-tenant-region](../examples/13-multi-tenant-region/) | B D | PASS name-isolated rebind; cross-tenant metrics unchanged | 0 |
 
 ## Metrics (practical denseness criteria)
 
@@ -95,8 +96,10 @@ This does **not** claim denseness over all of \(S_{\mathrm{practical}}\)
 | `orch:parallel` after rebind | Free-var break (`orch-yield-safe`) inside stdlib | Not used on PASS path |
 | `aether:fanout-with-yield` | Stable yield barriers; proposers pure; single executor mutates | **PASS path** — isomorphic cooperative parallel+yield topology in \(V_A\) |
 
+- **`aether-region`** — dual bindings `gate-a` / `gate-b`; `aether:region-fail-count` takes a gate *procedure* (no free-name capture); proves rebind of one region leaves the other unchanged through poison/heal.
+
 ## Next measurements
 
-- N=100+ optional if product needs longer soak; multi-tenant region isolation if needed.
+- N=100+ optional if product needs longer soak.
 - Re-try true fiber parallel when host closure capture is fixed.
 - Move embedded A+F out of `aether-min` only when host same-module free-var rule is fixed.

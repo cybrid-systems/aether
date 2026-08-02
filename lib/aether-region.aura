@@ -1,0 +1,42 @@
+; lib/aether-region.aura — Multi-tenant region isolation (denseness)
+;
+; (require "aether-region" all:)
+;
+; Two named policy bindings (gate-a / gate-b) in one workspace. Mutation of
+; one region must not change the other region's batch metrics. Pure Aura —
+; no process isolation; denseness = rebind targets stay name-isolated.
+;
+; Host: public install only; batch helpers take the gate *procedure* so
+; free-name capture is not required after rebind.
+
+(export aether:region-body-strict
+        aether:region-body-widen
+        aether:region-body-deny
+        aether:region-install-pair
+        aether:region-fail-count
+        aether:region-within-budget?)
+
+(require "std/list" all:)
+(require "aether-min" all:)
+
+(define aether:region-body-strict "(lambda (x) (< x 4))")
+(define aether:region-body-widen "(lambda (x) (< x 7))")
+(define aether:region-body-deny "(lambda (x) #f)")
+
+; Install two independent gate bindings (same initial policy).
+(define (aether:region-install-pair)
+  (aether:install-source
+    "(define gate-a (lambda (x) (< x 4))) (define gate-b (lambda (x) (< x 4)))"))
+
+; fails over 1..10 for a gate procedure argument (not a free name).
+(define (aether:region-fail-count gate-fn)
+  (let ((xs (list 1 2 3 4 5 6 7 8 9 10)))
+    (let loop ((ys xs) (bad 0))
+      (if (null? ys)
+        bad
+        (if (gate-fn (car ys))
+          (loop (cdr ys) bad)
+          (loop (cdr ys) (+ bad 1)))))))
+
+(define (aether:region-within-budget? gate-fn)
+  (<= (aether:region-fail-count gate-fn) 4))

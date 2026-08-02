@@ -141,14 +141,14 @@ aether/
 │   ├── aether-propose.aura     # Propose edge (rule / stub / live)
 │   ├── aether-domain.aura      # Shared gate workload
 │   ├── aether-orch.aura        # Multi-propose arbiter + yield fanout (C)
+│   ├── aether-region.aura      # Multi-tenant named regions
 │   └── README.md               # Lib map + host packaging notes
 ├── examples/
 │   ├── _template/              # Copy to add a new probe
 │   ├── README.md               # Probe index + conventions
-│   ├── 01-single-loop/ … 09-live-minimax/
-│   ├── 10-long-n-stress/       # N=50 denseness stress
-│   ├── 11-arbitrated-multi/    # Multi-propose + arbiter
-│   └── 12-parallel-yield/      # Fanout + yield + arbiter
+│   ├── 01–09 denseness + live MiniMax
+│   ├── 10-long-n-stress/ … 12-parallel-yield/
+│   └── 13-multi-tenant-region/ # Name-isolated multi-tenant rebind
 └── notes/
     ├── escape-log.md
     └── denseness-report.md

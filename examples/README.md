@@ -21,6 +21,7 @@ Each example is a **runnable denseness probe**. Convention:
 | `10-long-n-stress` | N=50 poison/heal denseness stress |
 | `11-arbitrated-multi` | Multi-propose + pure-Aura arbiter |
 | `12-parallel-yield` | Fanout + yield barriers + arbiter |
+| `13-multi-tenant-region` | Name-isolated multi-tenant rebind |
 
 ## Live (not in run-all)
 
