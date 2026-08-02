@@ -103,20 +103,23 @@ notes/denseness-report.md
 
 ### Phase 1
 
-**Examples 01–03 — done (Phase 1)**
+**Examples 01–05 — done (Phase 1–2 denseness probes)**
 
-- `01-single-loop` — O→D→M→V→R baseline  
-- `02-business-signal` — Decide from domain fail-count / budget  
-- `03-researcher-executor` — propose edge + guarded executor (LLM not required)  
-- Shared surface: `lib/aether-min.aura`  
+- `01` baseline O→D→M→V→R  
+- `02` business fail-rate decide  
+- `03` researcher propose + executor guard  
+- `04` hot strategy + self-heal  
+- `05` long-run harness  
+- Report: `notes/denseness-report.md`  
+- Surface: `lib/aether-min.aura`  
 
 Host prerequisites: Aura #2566–#2570.
 
-**Next (Phase 2)**
+**Optional next**
 
-- **04** — hot strategy + self-heal (Axis D)  
-- **05** — long-run denseness harness + `notes/denseness-report.md`  
-- Optional: split `aether-min`; wire LLM only on researcher propose edge  
+- Wire LLM only on researcher propose edge; log \(E\)  
+- Split `aether-min` into axis modules  
+- Longer N / multi-tenant if product needs  
 
 Phase 1 success bar: majority of evolvable core in pure Aura; full observe/rollback;
 escape log honest; business-logic escape rate aimed &lt; 10–15%.

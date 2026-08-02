@@ -138,13 +138,13 @@ aether/
 ├── examples/
 │   ├── 01-single-loop/         # O→D→M→V→R baseline
 │   ├── 02-business-signal/     # Decide from fail-rate / budget
-│   └── 03-researcher-executor/ # Propose edge + guarded executor
+│   ├── 03-researcher-executor/ # Propose edge + guarded executor
+│   ├── 04-hot-strategy-heal/   # Hot deploy + self-heal
+│   └── 05-long-run-denseness/  # Multi-round harness
 └── notes/
-    ├── escape-log.md        # Every necessary escape
-    └── denseness-report.md  # (planned) Aggregated θ, ρ, conclusions
+    ├── escape-log.md
+    └── denseness-report.md     # Phase 1–2 denseness write-up
 ```
-
-Planned later: `lib/{loop,mutate-policy,orch,adapt,boundary,measure}/` and examples 03–05.
 
 ## Span order (execution path)
 
@@ -178,18 +178,20 @@ Apache License 2.0 (same as Aura)
 Scope locked. Phase 1 examples on modular `lib/aether-min.aura`:
 
 ```bash
-./scripts/run-aura.sh examples/01-single-loop/main.aura
-./scripts/run-aura.sh examples/02-business-signal/main.aura
-./scripts/run-aura.sh examples/03-researcher-executor/main.aura
+for e in 01-single-loop 02-business-signal 03-researcher-executor \
+         04-hot-strategy-heal 05-long-run-denseness; do
+  ./scripts/run-aura.sh examples/$e/main.aura
+done
 ```
 
 | Example | Proves |
 |---------|--------|
 | **01** | O→D→M→V→R baseline (commit / skip / rollback) |
-| **02** | Decide from **business fail-rate**, not only engine counters |
-| **03** | **Dual-role**: researcher propose edge + executor guards (C+E) |
+| **02** | Decide from **business fail-rate** |
+| **03** | Dual-role propose edge + executor guards (C+E) |
+| **04** | Hot strategy deploy + **self-heal** to last-good (D) |
+| **05** | Multi-round denseness harness (N≈10) |
 
-Phase 1 examples 1–3 complete. Zero escapes in the evolvable core on PASS paths.
-Requires Aura host fixes #2566–#2570.
-
-**Next (Phase 2):** hot strategy + self-heal (04); long-run denseness harness (05).
+Phases 1–2 complete for constructive denseness probes. See
+[`notes/denseness-report.md`](notes/denseness-report.md).
+Zero evolvable-core escapes on PASS paths. Requires Aura #2566–#2570.

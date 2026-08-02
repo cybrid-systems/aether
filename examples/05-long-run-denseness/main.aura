@@ -1,0 +1,203 @@
+; examples/05-long-run-denseness/main.aura
+;
+; Phase 2 denseness harness — multi-round deploy / skip / poison+heal.
+; Unrolled rounds (host-friendly after rebind).
+;
+; Run: ./scripts/run-aura.sh examples/05-long-run-denseness/main.aura
+
+(require "std/list" all:)
+(require "aether-min" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether 05-long-run-denseness: multi-round harness ===")
+(newline)
+
+(define MAX-FAILS 4)
+(define last-good-body "(lambda (x) (< x 7))")
+(define heals 0)
+(define poisons 0)
+(define deploys 0)
+(define skips 0)
+
+(define installed
+  (aether:install-source "(define gate (lambda (x) (< x 4)))"))
+
+(define (run-batch)
+  (let ((xs (list 1 2 3 4 5 6 7 8 9 10)))
+    (let loop ((ys xs) (ok 0) (bad 0))
+      (if (null? ys)
+        (list ok bad)
+        (if (gate (car ys))
+          (loop (cdr ys) (+ ok 1) bad)
+          (loop (cdr ys) ok (+ bad 1)))))))
+
+(define (fail-count)
+  (car (cdr (run-batch))))
+
+(define (within-budget?)
+  (<= (fail-count) MAX-FAILS))
+
+(display "R0 batch=")
+(display (run-batch))
+(newline)
+
+(define r0 #f)
+(define r3h #f)
+(define r7h #f)
+
+; Round 0: over budget → deploy widen
+(set! r0
+  (aether:loop-once
+    (lambda () (fail-count))
+    (lambda () #t)
+    "gate"
+    "(lambda (x) (< x 7))"
+    "r0-widen"
+    within-budget?))
+(set! deploys (+ deploys 1))
+(set! last-good-body "(lambda (x) (< x 7))")
+(display "r0=")
+(write r0)
+(display " batch=")
+(display (run-batch))
+(newline)
+
+; Round 1: skip
+(aether:loop-once
+  (lambda () (fail-count))
+  (lambda () #f)
+  "gate" last-good-body "r1-skip" within-budget?)
+(set! skips (+ skips 1))
+(display "r1 skip batch=")
+(display (run-batch))
+(newline)
+
+; Round 2: skip
+(aether:loop-once
+  (lambda () (fail-count))
+  (lambda () #f)
+  "gate" last-good-body "r2-skip" within-budget?)
+(set! skips (+ skips 1))
+(display "r2 skip")
+(newline)
+
+; Round 3: poison + heal
+(aether:rebind-safe "gate" "(lambda (x) #f)" "r3-poison")
+(set! poisons (+ poisons 1))
+(display "r3 after poison fails=")
+(display (fail-count))
+(newline)
+(set! r3h
+  (aether:loop-once
+    (lambda () (fail-count))
+    (lambda () #t)
+    "gate" last-good-body "r3-heal" within-budget?))
+(set! heals (+ heals 1))
+(display "r3 heal=")
+(write r3h)
+(display " batch=")
+(display (run-batch))
+(newline)
+
+; Round 4–6: skip
+(aether:loop-once
+  (lambda () (fail-count))
+  (lambda () #f)
+  "gate" last-good-body "r4-skip" within-budget?)
+(set! skips (+ skips 1))
+(aether:loop-once
+  (lambda () (fail-count))
+  (lambda () #f)
+  "gate" last-good-body "r5-skip" within-budget?)
+(set! skips (+ skips 1))
+(aether:loop-once
+  (lambda () (fail-count))
+  (lambda () #f)
+  "gate" last-good-body "r6-skip" within-budget?)
+(set! skips (+ skips 1))
+
+; Round 7: poison + heal
+(aether:rebind-safe "gate" "(lambda (x) #f)" "r7-poison")
+(set! poisons (+ poisons 1))
+(set! r7h
+  (aether:loop-once
+    (lambda () (fail-count))
+    (lambda () #t)
+    "gate" last-good-body "r7-heal" within-budget?))
+(set! heals (+ heals 1))
+(display "r7 heal=")
+(write r7h)
+(display " batch=")
+(display (run-batch))
+(newline)
+
+; Round 8–9: skip
+(aether:loop-once
+  (lambda () (fail-count))
+  (lambda () #f)
+  "gate" last-good-body "r8-skip" within-budget?)
+(set! skips (+ skips 1))
+(aether:loop-once
+  (lambda () (fail-count))
+  (lambda () #f)
+  "gate" last-good-body "r9-skip" within-budget?)
+(set! skips (+ skips 1))
+
+(display "final batch=")
+(display (run-batch))
+(newline)
+(display "deploys=")
+(display deploys)
+(display " skips=")
+(display skips)
+(display " poisons=")
+(display poisons)
+(display " heals=")
+(display heals)
+(newline)
+(display "loop-stats ")
+(write (aether:stats-alist))
+(newline)
+(display "boundary/quota ok=")
+(display (aether:safety-ok?))
+(newline)
+
+(define all-ok
+  (and installed
+       (within-budget?)
+       (= (fail-count) 4)
+       (>= deploys 1)
+       (>= heals 2)
+       (>= poisons 2)
+       (>= skips 6)
+       (eq? (aether:alist-ref ":decision" r0 #f) 'commit)
+       (eq? (aether:alist-ref ":decision" r3h #f) 'commit)
+       (eq? (aether:alist-ref ":decision" r7h #f) 'commit)
+       (aether:safety-ok?)
+       (= (aether:stats-ref "escapes") 0)
+       (>= (aether:stats-ref "rounds") 10)))
+
+(if all-ok
+  (begin
+    (display "PASS: long-run denseness harness (deploy/skip/poison-heal x2)")
+    (newline)
+    (display "escapes: 0; business fail-count within budget at end")
+    (newline)
+    (display "DENSENESS_SUMMARY deploys=")
+    (display deploys)
+    (display " heals=")
+    (display heals)
+    (display " skips=")
+    (display skips)
+    (display " commits=")
+    (display (aether:stats-ref "commits"))
+    (display " rollbacks=")
+    (display (aether:stats-ref "rollbacks"))
+    (newline))
+  (begin
+    (display "FAIL")
+    (newline)
+    (display (list (run-batch) deploys skips poisons heals
+                   (aether:stats-alist)))
+    (newline)))

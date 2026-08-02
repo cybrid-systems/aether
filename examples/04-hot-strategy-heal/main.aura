@@ -1,0 +1,185 @@
+; examples/04-hot-strategy-heal/main.aura
+;
+; Phase 2 denseness probe — hot strategy swap + self-heal (Axis D + A/B/F).
+;
+; "Hot" here means runtime strategy-body replacement under mutation guards
+; (not AOT .so reload). Self-heal restores last-known-good body when health fails.
+;
+; Flow:
+;   R1 hot-deploy good strategy (double → triple) → commit, remember last-good
+;   R2 healthy → skip deploy
+;   R3 hot-deploy bad body → health fail → self-heal to last-good → ok
+;
+; Run: ./scripts/run-aura.sh examples/04-hot-strategy-heal/main.aura
+
+(require "std/list" all:)
+(require "aether-min" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether 04-hot-strategy-heal: hot deploy + self-heal ===")
+(newline)
+
+; Ideal: strategy(7) = 21 (triple).
+(define (health-ok?)
+  (= (strategy 7) 21))
+
+(define (health-distance)
+  (let ((v (strategy 7)))
+    (if (< v 21) (- 21 v) (- v 21))))
+
+; Last-known-good strategy body (string) and version counter.
+(define last-good-body "(lambda (x) (* x 2))")
+(define strategy-version 0)
+(define heal-count 0)
+(define deploy-commits 0)
+(define deploy-rollbacks 0)
+
+(define installed
+  (aether:install-source "(define strategy (lambda (x) (* x 2)))"))
+
+(display "installed=")
+(display installed)
+(display " strategy(7)=")
+(display (strategy 7))
+(display " health-ok?=")
+(display (health-ok?))
+(newline)
+
+; Hot-deploy: propose new body under aether guards + health verify.
+; On success, update last-good-body and version.
+(define (hot-deploy body summary)
+  (let ((r (aether:loop-once
+             (lambda () (health-distance))
+             (lambda () #t)
+             "strategy"
+             body
+             summary
+             health-ok?)))
+    (if (eq? (aether:alist-ref ":decision" r #f) 'commit)
+      (begin
+        (set! last-good-body body)
+        (set! strategy-version (+ strategy-version 1))
+        (set! deploy-commits (+ deploy-commits 1))
+        r)
+      (begin
+        (set! deploy-rollbacks (+ deploy-rollbacks 1))
+        r))))
+
+; Self-heal: if unhealthy, rebind to last-good-body and re-check.
+(define (self-heal reason)
+  (if (health-ok?)
+    (list (cons ":ok" #t)
+          (cons ":decision" 'skip)
+          (cons ":reason" "already-healthy"))
+    (begin
+      (set! heal-count (+ heal-count 1))
+      (let ((r (aether:loop-once
+                 (lambda () (health-distance))
+                 (lambda () #t)
+                 "strategy"
+                 last-good-body
+                 reason
+                 health-ok?)))
+        r))))
+
+; Predeclare result cells
+(define r1 #f)
+(define r2 #f)
+(define r3-deploy #f)
+(define r3-heal #f)
+
+; ── R1: hot-deploy triple (should commit) ──
+(set! r1 (hot-deploy "(lambda (x) (* x 3))" "deploy-v1-triple"))
+(display "R1 deploy=")
+(write r1)
+(newline)
+(display "R1 strategy(7)=")
+(display (strategy 7))
+(display " version=")
+(display strategy-version)
+(display " last-good=")
+(display last-good-body)
+(newline)
+
+; ── R2: already healthy → skip path via loop-once need-mutate=#f ──
+(set! r2
+  (aether:loop-once
+    (lambda () (health-distance))
+    (lambda () (not (health-ok?)))
+    "strategy"
+    "(lambda (x) (* x 3))"
+    "r2-noop"
+    health-ok?))
+(display "R2=")
+(write r2)
+(newline)
+
+; ── R3: deploy bad, then self-heal ──
+; Force bad body with rebind-safe (bypass health verify) to simulate
+; a poisoned hot path / operator error, then heal.
+(set! r3-deploy
+  (aether:rebind-safe "strategy" "(lambda (x) (* x 99))" "poison"))
+(display "R3 poison=")
+(write r3-deploy)
+(newline)
+(display "R3 after poison strategy(7)=")
+(display (strategy 7))
+(display " health-ok?=")
+(display (health-ok?))
+(newline)
+
+(set! r3-heal (self-heal "heal-to-last-good"))
+(display "R3 heal=")
+(write r3-heal)
+(newline)
+(display "R3 after heal strategy(7)=")
+(display (strategy 7))
+(display " heal-count=")
+(display heal-count)
+(newline)
+
+(display "stats ")
+(write (aether:stats-alist))
+(newline)
+(display "deploy-commits=")
+(display deploy-commits)
+(display " deploy-rollbacks=")
+(display deploy-rollbacks)
+(display " version=")
+(display strategy-version)
+(newline)
+
+(define all-ok
+  (and installed
+       (eq? (aether:alist-ref ":decision" r1 #f) 'commit)
+       (eq? (aether:alist-ref ":decision" r2 #f) 'skip)
+       (aether:alist-ref ":ok" r3-deploy #f)
+       (eq? (aether:alist-ref ":decision" r3-heal #f) 'commit)
+       (health-ok?)
+       (= (strategy 7) 21)
+       (= strategy-version 1)
+       (>= heal-count 1)
+       (= deploy-commits 1)
+       (equal? last-good-body "(lambda (x) (* x 3))")
+       (aether:safety-ok?)
+       (= (aether:stats-ref "escapes") 0)))
+
+(if all-ok
+  (begin
+    (display "PASS: hot strategy deploy + self-heal to last-good")
+    (newline)
+    (display "escapes: 0 in evolvable core (pure Aura + aether-min)")
+    (newline))
+  (begin
+    (display "FAIL")
+    (newline)
+    (display (list (aether:alist-ref ":decision" r1 #f)
+                   (aether:alist-ref ":decision" r2 #f)
+                   (aether:alist-ref ":decision" r3-heal #f)
+                   (strategy 7)
+                   heal-count
+                   strategy-version
+                   last-good-body
+                   (aether:stats-alist)))
+    (newline)))
