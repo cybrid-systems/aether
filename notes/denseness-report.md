@@ -22,6 +22,7 @@ escapes \(E\) on the world/propose edge only.
 | [06-propose-edge-escape](../examples/06-propose-edge-escape/) | E | PASS rule E=0; stub E≥1; core still rolls back bad | 0 core / ≥1 propose-edge (intentional) |
 | [07-proposal-schema](../examples/07-proposal-schema/) | E | PASS schema refuse + semantic rollback | 0 |
 | [08-parse-proposal-wire](../examples/08-parse-proposal-wire/) | E | PASS wire parse from prose; garbage/illegal refuse | 0 core / ≥1 sim-escape |
+| [09-live-minimax](../examples/09-live-minimax/) | E | PASS MiniMax-M3 live propose (manual; needs key) | 0 core / ≥1 live HTTPS |
 
 ## Metrics (practical denseness criteria)
 

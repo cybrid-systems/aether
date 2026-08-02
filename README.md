@@ -144,7 +144,8 @@ aether/
 │   ├── 05-long-run-denseness/
 │   ├── 06-propose-edge-escape/ # Meter E on propose edge only
 │   ├── 07-proposal-schema/     # Schema-validate before rebind
-│   └── 08-parse-proposal-wire/ # LLM-style wire parse → schema → exec
+│   ├── 08-parse-proposal-wire/ # LLM-style wire parse → schema → exec
+│   └── 09-live-minimax/        # MiniMax-M3 live propose (needs key)
 └── notes/
     ├── escape-log.md
     └── denseness-report.md
@@ -195,7 +196,8 @@ Scope locked. Phase 1 examples on modular `lib/aether-min.aura`:
 | **06** | Propose-edge **\(E\) metering** (rule E=0 / stub E≥1) |
 | **07** | **Schema gate** — invalid refuse; bad semantics rollback |
 | **08** | **Wire parse** — prose/garbage/illegal text → structured proposal |
+| **09** | **Live MiniMax-M3** propose edge (`source ./scripts/env-minimax.sh`) |
+
+Offline suite: `./scripts/run-all.sh` (01–08). Live: `source ./scripts/env-minimax.sh && ./scripts/run-aura.sh examples/09-live-minimax/main.aura`.
 
 See [`notes/denseness-report.md`](notes/denseness-report.md).
-Evolvable-core escapes = 0 on PASS paths; 06/08 meter propose-edge \(E\).
-Requires Aura #2566–#2570.

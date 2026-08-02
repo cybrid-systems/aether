@@ -38,3 +38,16 @@ No business-logic escapes on evolvable core.
 - Mitigation: executor ignores proposal authority; `aether:stats` key `escapes`
   counts propose-edge events; bad stub proposals still rollback
 
+## [2026-08-02] Live MiniMax-M3 propose (example 09)
+
+- Location: `examples/09-live-minimax/main.aura`, `aether-propose-live`
+- Reason: real LLM on researcher propose edge for denseness of \(E\) isolation
+- Escape mechanism: HTTPS `LLM_BASE_URL/chat/completions` via `std/llm` /
+  `http-post` (OpenAI-compatible MiniMax)
+- Config: `~/code/keys/minimax` → `LLM_API_KEY`;
+  `LLM_BASE_URL=https://api.minimaxi.com/v1`; `LLM_MODEL=MiniMax-M3`
+  (note: `api.minimax.io` returns 2049 invalid key for this credential)
+- Impact: **propose edge only**; executor schema + business verify unchanged
+- Mitigation: wire parse + body banlist; invalid LLM bodies refuse/rebind-fail;
+  fallback rule proposal still schema-valid
+

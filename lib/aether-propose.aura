@@ -30,6 +30,7 @@
 
 (require "std/string" all:)
 (require "aether-min" all:)
+; std/llm is loaded only inside aether-propose-live (keeps offline examples light).
 
 (define (aether:proposal-kind p) (car p))
 (define (aether:proposal-name p) (car (cdr p)))
@@ -52,11 +53,26 @@
 
 ; ── Schema ───────────────────────────────────────────────────
 
+; Strict body: pure lambda on x only — no free calls into workspace.
+(define (aether-body-banned? body)
+  (or (string-contains? body "gate")
+      (string-contains? body "fail-count")
+      (string-contains? body "max-fails")
+      (string-contains? body "widen")
+      (string-contains? body "define")
+      (string-contains? body "set!")
+      (string-contains? body "require")
+      (string-contains? body "eval")
+      (string-contains? body "load")))
+
 (define (aether-body-ok? body)
   (and (string? body)
        (> (string-length body) 8)
+       (< (string-length body) 120)
        (string-prefix? body "(lambda")
-       (string-contains? body ")")))
+       (string-contains? body "x")
+       (string-contains? body ")")
+       (not (aether-body-banned? body))))
 
 (define (aether:proposal-errors p)
   (if (not (pair? p))
@@ -113,17 +129,30 @@
       (string-append (aether-num-str max-fails)
                      ". Widen when over budget; skip when healthy."))))
 
-; Prefer first line that contains '|' (wire format); else first non-empty.
+; Prefer answer-at-end: only the last ~240 chars (keeps <think> noise out).
+(define (aether-tail s n)
+  (if (not (string? s))
+    ""
+    (let ((len (string-length s)))
+      (if (<= len n)
+        s
+        (substring s (- len n) len)))))
+
 (define (aether-wire-line s)
-  (let ((parts (string-split s "\n")))
-    (let loop ((xs parts) (first-nonempty ""))
-      (cond
-        ((null? xs) first-nonempty)
-        ((equal? (car xs) "") (loop (cdr xs) first-nonempty))
-        ((string-contains? (car xs) "|") (car xs))
-        (else
-         (loop (cdr xs)
-               (if (equal? first-nonempty "") (car xs) first-nonempty)))))))
+  (if (not (string? s))
+    ""
+    (let ((parts (string-split (aether-tail s 240) "\n")))
+      (let loop ((xs parts))
+        (cond
+          ((null? xs) "")
+          ((equal? (car xs) "") (loop (cdr xs)))
+          ((> (string-length (car xs)) 200) (loop (cdr xs)))
+          ((or (string-prefix? (car xs) "MUTATE|")
+               (string-prefix? (car xs) "mutate|")
+               (string-prefix? (car xs) "SKIP|")
+               (string-prefix? (car xs) "skip|"))
+           (car xs))
+          (else (loop (cdr xs))))))))
 
 (define (aether-norm-kind k)
   (if (or (equal? k "MUTATE") (equal? k "mutate") (equal? k "Mutate"))
@@ -150,16 +179,21 @@
 
 ; ── Propose (rule / stub / live) ─────────────────────────────
 
+(define *body-deny* "(lambda (x) #f)")
+(define *body-widen* "(lambda (x) (< x 7))")
+
 (define (aether:propose-rule fails max-fails mode)
-  (if (equal? mode "deny-all")
-    (list "mutate" "gate" "(lambda (x) #f)" "rule-deny-all" "rule")
-    (if (equal? mode "noop")
-      (list "skip" "gate" "" "rule-noop" "rule")
-      (if (equal? mode "widen")
-        (list "mutate" "gate" "(lambda (x) (< x 7))" "rule-widen" "rule")
-        (if (> fails max-fails)
-          (list "mutate" "gate" "(lambda (x) (< x 7))" "rule-auto-widen" "rule")
-          (list "skip" "gate" "" "rule-auto-noop" "rule"))))))
+  (cond
+    ((equal? mode "deny-all")
+     (list "mutate" "gate" *body-deny* "rule-deny-all" "rule"))
+    ((equal? mode "noop")
+     (list "skip" "gate" "" "rule-noop" "rule"))
+    ((equal? mode "widen")
+     (list "mutate" "gate" *body-widen* "rule-widen" "rule"))
+    ((and (number? fails) (number? max-fails) (> fails max-fails))
+     (list "mutate" "gate" *body-widen* "rule-auto-widen" "rule"))
+    (else
+     (list "skip" "gate" "" "rule-auto-noop" "rule"))))
 
 (define (aether-propose-stub fails max-fails mode)
   (aether:stats-bump! "escapes")
@@ -170,36 +204,43 @@
           (string-append "llm-stub:" (car (cdr (cdr (cdr p)))))
           "llm-stub")))
 
+; Extract text content from llm:chat result (hash or string).
+(define (aether-llm-content resp)
+  (cond
+    ((string? resp) resp)
+    ((hash? resp)
+     (if (hash-ref resp "ok" #f)
+       (let ((c (hash-ref resp "content" "")))
+         (if (string? c) c ""))
+       ""))
+    (else "")))
+
 (define (aether-propose-live fails max-fails mode)
   (aether:stats-bump! "escapes")
-  (try
-    (begin
-      (require "std/llm" all:)
-      (let ((key (getenv "LLM_API_KEY"))
-            (fallback (aether:propose-rule fails max-fails mode)))
-        (if (or (void? key) (not (string? key)) (equal? key ""))
-          (list (car fallback) (car (cdr fallback)) (car (cdr (cdr fallback)))
-                (string-append "llm-nokey:" (car (cdr (cdr (cdr fallback)))))
-                "llm-live")
-          ; Live chat → parse wire format → schema gate.
-          ; If parse/schema fails, fall back to rule proposal (still escaped).
-          (let ((raw (try
-                       (llm:chat (aether:proposal-prompt fails max-fails))
-                       (catch (e) ""))))
-            (let ((parsed (aether:parse-proposal-text
-                            (if (string? raw) raw "")
-                            "llm-live")))
-              (if (and parsed (aether:proposal-valid? parsed))
+  (let ((fallback (aether:propose-rule fails max-fails mode))
+        (key (getenv "LLM_API_KEY")))
+    (if (or (void? key) (not (string? key)) (equal? key "")
+            (= (string-length key) 0))
+      (list (car fallback) (car (cdr fallback)) (car (cdr (cdr fallback)))
+            "llm-nokey"
+            "llm-live")
+      (begin
+        ; Load LLM surface on demand (not at module import).
+        (require "std/llm" all:)
+        (let ((resp
+                (try
+                  (llm:chat
+                    "Reply with EXACTLY one line only: MUTATE|gate|(lambda (x) EXPRESSION)|summary OR SKIP|gate||summary. No markdown. No analysis."
+                    (aether:proposal-prompt fails max-fails))
+                  (catch (e) #f))))
+          (let ((text (aether-llm-content resp)))
+            (let ((parsed (aether:parse-proposal-text text "llm-live")))
+              (if (and (pair? parsed) (aether:proposal-valid? parsed))
                 parsed
                 (list (car fallback) (car (cdr fallback))
                       (car (cdr (cdr fallback)))
                       "llm-parse-fallback"
-                      "llm-live")))))))
-    (catch (e)
-      (let ((p (aether:propose-rule fails max-fails mode)))
-        (list (car p) (car (cdr p)) (car (cdr (cdr p)))
-              "llm-error-fallback"
-              "llm-live")))))
+                      "llm-live")))))))))
 
 (define (aether:propose fails max-fails mode)
   (let ((pm (aether:propose-mode)))
