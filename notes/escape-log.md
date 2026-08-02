@@ -15,15 +15,26 @@ Format for each entry:
 
 ---
 
-(No business-logic escapes recorded for examples 01–03 PASS paths.)
-
 Host configuration used for demos (not counted as \(V_A\) escapes of the evolvable core):
 
 - `AURA_SANDBOX=off` — CLI must allow workspace mutation; production isolation remains Aura’s responsibility.
 - `AURA_PIPELINE_STRICT=0` — some host builds forbid tree-walker fallback; demo scripts relax this for reproducibility.
 
-### Example 03 note (not an escape on PASS path)
+### Examples 01–05 PASS paths
 
-- Researcher propose edge is pure Aura rule table today.
-- Optional future LLM propose is **allowed only** in `researcher-propose` / propose-edge hook; executor must stay pure `aether-min`. Log any live LLM use here when enabled.
+No business-logic escapes on evolvable core.
+
+### Example 06 — intentional propose-edge escape (metering)
+
+## [2026-08-02] LLM-stub propose edge (scenario B/C)
+
+- Location: `examples/06-propose-edge-escape/main.aura`, `lib/aether-propose.aura`
+- Reason: demonstrate that \(E\) can be confined to the researcher propose edge
+  while the executor still verifies and rolls back bad proposals
+- Escape mechanism: **logical** propose-edge marker (`llm-stub`); no network on
+  the default PASS path. Live mode (`AETHER_LLM_PROPOSE=live`) may call `std/llm`
+  / external HTTP when `LLM_API_KEY` is set
+- Impact: **propose edge only** — never decide/verify/rollback authority
+- Mitigation: executor ignores proposal authority; `aether:stats` key `escapes`
+  counts propose-edge events; bad stub proposals still rollback
 

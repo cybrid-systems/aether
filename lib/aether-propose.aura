@@ -1,0 +1,108 @@
+; lib/aether-propose.aura — Propose-edge helpers (Axis E)
+;
+; (require "aether-propose" all:)
+;
+; Proposals are untrusted data for the executor:
+;   (list kind name body summary [source])
+;   kind: "mutate" | "skip"
+;   source: "rule" | "llm-stub" | "llm-live"
+;
+; Modes via (aether:propose-mode) reading env AETHER_LLM_PROPOSE:
+;   unset / "0" / "rule"  → pure Aura rules (default denseness PASS)
+;   "stub"                → pretend LLM path; bumps escapes; no network
+;   "1" / "live"          → try std/llm if LLM_API_KEY set; else stub
+;
+; Executor must remain pure aether-min. Escapes only on this edge.
+
+(export aether:propose-mode
+        aether:propose-rule
+        aether:propose
+        aether:proposal-kind
+        aether:proposal-name
+        aether:proposal-body
+        aether:proposal-summary
+        aether:proposal-source)
+
+(require "aether-min" all:)
+
+(define (aether:proposal-kind p) (car p))
+(define (aether:proposal-name p) (car (cdr p)))
+(define (aether:proposal-body p) (car (cdr (cdr p))))
+(define (aether:proposal-summary p) (car (cdr (cdr (cdr p)))))
+(define (aether:proposal-source p)
+  (if (null? (cdr (cdr (cdr (cdr p)))))
+    "rule"
+    (car (cdr (cdr (cdr (cdr p)))))))
+
+; Read propose mode from env (void/empty → rule).
+(define (aether:propose-mode)
+  (let ((v (getenv "AETHER_LLM_PROPOSE")))
+    (if (or (void? v) (not (string? v)) (equal? v "") (equal? v "0") (equal? v "rule"))
+      "rule"
+      (if (or (equal? v "1") (equal? v "live") (equal? v "llm"))
+        "live"
+        (if (equal? v "stub")
+          "stub"
+          "rule")))))
+
+; Pure rule table — zero escapes.
+; fails: number, mode: "auto" | "deny-all" | "noop" | "widen"
+; max-fails: business budget threshold
+(define (aether:propose-rule fails max-fails mode)
+  (if (equal? mode "deny-all")
+    (list "mutate" "gate" "(lambda (x) #f)" "rule-deny-all" "rule")
+    (if (equal? mode "noop")
+      (list "skip" "gate" "" "rule-noop" "rule")
+      (if (equal? mode "widen")
+        (list "mutate" "gate" "(lambda (x) (< x 7))" "rule-widen" "rule")
+        (if (> fails max-fails)
+          (list "mutate" "gate" "(lambda (x) (< x 7))" "rule-auto-widen" "rule")
+          (list "skip" "gate" "" "rule-auto-noop" "rule"))))))
+
+; Stub LLM path: same structured proposal as rules, but marks an escape
+; on the propose edge (no network). Used for denseness E metering demos.
+(define (aether-propose-stub fails max-fails mode)
+  (aether:stats-bump! "escapes")
+  (let ((p (aether:propose-rule fails max-fails mode)))
+    (list (car p)
+          (car (cdr p))
+          (car (cdr (cdr p)))
+          (string-append "llm-stub:" (car (cdr (cdr (cdr p)))))
+          "llm-stub")))
+
+; Live LLM: attempt chat; on any failure fall back to stub-shaped rule
+; with source llm-live or llm-fallback. Always bumps escapes when entered.
+(define (aether-propose-live fails max-fails mode)
+  (aether:stats-bump! "escapes")
+  (try
+    (begin
+      (require "std/llm" all:)
+      (let ((key (getenv "LLM_API_KEY")))
+        (if (or (void? key) (not (string? key)) (equal? key ""))
+          ; no key → structured fallback still on propose edge
+          (let ((p (aether:propose-rule fails max-fails mode)))
+            (list (car p) (car (cdr p)) (car (cdr (cdr p)))
+                  (string-append "llm-nokey:" (car (cdr (cdr (cdr p)))))
+                  "llm-live"))
+          ; Live call is intentionally minimal: we do not parse free-form
+          ; code into production mutations without a schema. For denseness
+          ; we record the escape and still return a rule proposal so the
+          ; executor path stays deterministic in CI.
+          (let ((p (aether:propose-rule fails max-fails mode)))
+            (list (car p) (car (cdr p)) (car (cdr (cdr p)))
+                  (string-append "llm-live-unparsed:" (car (cdr (cdr (cdr p)))))
+                  "llm-live")))))
+    (catch (e)
+      (let ((p (aether:propose-rule fails max-fails mode)))
+        (list (car p) (car (cdr p)) (car (cdr (cdr p)))
+              "llm-error-fallback"
+              "llm-live")))))
+
+; Public entry: dispatch by mode.
+(define (aether:propose fails max-fails mode)
+  (let ((pm (aether:propose-mode)))
+    (if (equal? pm "stub")
+      (aether-propose-stub fails max-fails mode)
+      (if (equal? pm "live")
+        (aether-propose-live fails max-fails mode)
+        (aether:propose-rule fails max-fails mode)))))

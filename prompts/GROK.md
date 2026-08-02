@@ -103,21 +103,18 @@ notes/denseness-report.md
 
 ### Phase 1
 
-**Examples 01–05 — done (Phase 1–2 denseness probes)**
+**Examples 01–06 — denseness probe suite**
 
-- `01` baseline O→D→M→V→R  
-- `02` business fail-rate decide  
-- `03` researcher propose + executor guard  
-- `04` hot strategy + self-heal  
-- `05` long-run harness  
+- `01`–`05` core loops (A–D + harness)  
+- `06` propose-edge \(E\) metering (`lib/aether-propose.aura`)  
 - Report: `notes/denseness-report.md`  
-- Surface: `lib/aether-min.aura`  
+- Run all: `./scripts/run-all.sh`  
 
 Host prerequisites: Aura #2566–#2570.
 
 **Optional next**
 
-- Wire LLM only on researcher propose edge; log \(E\)  
+- Live LLM parse → structured proposal schema (still propose-only)  
 - Split `aether-min` into axis modules  
 - Longer N / multi-tenant if product needs  
 

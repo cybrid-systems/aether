@@ -134,16 +134,18 @@ aether/
 ├── prompts/
 │   └── GROK.md              # Living prompt for continued generation
 ├── lib/
-│   └── aether-min.aura      # Staged reusable A+B+F helpers (experimental)
+│   ├── aether-min.aura         # A+B+F closed-loop surface
+│   └── aether-propose.aura     # Propose edge (rule / stub / live)
 ├── examples/
-│   ├── 01-single-loop/         # O→D→M→V→R baseline
-│   ├── 02-business-signal/     # Decide from fail-rate / budget
-│   ├── 03-researcher-executor/ # Propose edge + guarded executor
-│   ├── 04-hot-strategy-heal/   # Hot deploy + self-heal
-│   └── 05-long-run-denseness/  # Multi-round harness
+│   ├── 01-single-loop/
+│   ├── 02-business-signal/
+│   ├── 03-researcher-executor/
+│   ├── 04-hot-strategy-heal/
+│   ├── 05-long-run-denseness/
+│   └── 06-propose-edge-escape/ # Meter E on propose edge only
 └── notes/
     ├── escape-log.md
-    └── denseness-report.md     # Phase 1–2 denseness write-up
+    └── denseness-report.md
 ```
 
 ## Span order (execution path)
@@ -178,10 +180,7 @@ Apache License 2.0 (same as Aura)
 Scope locked. Phase 1 examples on modular `lib/aether-min.aura`:
 
 ```bash
-for e in 01-single-loop 02-business-signal 03-researcher-executor \
-         04-hot-strategy-heal 05-long-run-denseness; do
-  ./scripts/run-aura.sh examples/$e/main.aura
-done
+./scripts/run-all.sh
 ```
 
 | Example | Proves |
@@ -189,9 +188,10 @@ done
 | **01** | O→D→M→V→R baseline (commit / skip / rollback) |
 | **02** | Decide from **business fail-rate** |
 | **03** | Dual-role propose edge + executor guards (C+E) |
-| **04** | Hot strategy deploy + **self-heal** to last-good (D) |
-| **05** | Multi-round denseness harness (N≈10) |
+| **04** | Hot strategy deploy + **self-heal** (D) |
+| **05** | Multi-round denseness harness |
+| **06** | Propose-edge **\(E\) metering** (rule E=0 / stub E≥1; core still pure) |
 
-Phases 1–2 complete for constructive denseness probes. See
-[`notes/denseness-report.md`](notes/denseness-report.md).
-Zero evolvable-core escapes on PASS paths. Requires Aura #2566–#2570.
+See [`notes/denseness-report.md`](notes/denseness-report.md).
+Evolvable-core escapes = 0 on PASS paths; example 06 intentionally meters
+propose-edge \(E\). Requires Aura #2566–#2570.

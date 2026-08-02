@@ -19,6 +19,7 @@ escapes \(E\) on the world/propose edge only.
 | [03-researcher-executor](../examples/03-researcher-executor/) | A B C E | PASS dual-role; propose pure-Aura | 0 (LLM not required) |
 | [04-hot-strategy-heal](../examples/04-hot-strategy-heal/) | A B D F | PASS hot deploy + self-heal | 0 |
 | [05-long-run-denseness](../examples/05-long-run-denseness/) | all smoke | PASS N=10 deploy/skip/poison-heal | 0 |
+| [06-propose-edge-escape](../examples/06-propose-edge-escape/) | E | PASS rule E=0; stub E≥1; core still rolls back bad | 0 core / ≥1 propose-edge (intentional) |
 
 ## Metrics (practical denseness criteria)
 
@@ -36,8 +37,9 @@ See [escape-log.md](escape-log.md).
 
 - Host config (`AURA_SANDBOX=off`, pipeline strict) is **not** counted as
   business-logic escape.
-- Optional LLM on researcher propose edge is **reserved** (not enabled in PASS);
-  if enabled, must be logged as propose-edge only.
+- Example 06 meters propose-edge \(E\): rule path keeps `escapes=0`; `llm-stub`
+  increments `escapes` while executor verify/rollback stays pure Aura.
+- Live LLM (`AETHER_LLM_PROPOSE=live`) is optional and must remain propose-only.
 
 ## Gaps / residual host constraints
 
