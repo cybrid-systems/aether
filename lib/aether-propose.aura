@@ -24,6 +24,8 @@
         aether:proposal-source
         aether:proposal-valid?
         aether:proposal-errors
+        aether:parse-proposal-text
+        aether:proposal-prompt
         aether:execute-proposal)
 
 (require "std/string" all:)
@@ -91,6 +93,61 @@
 (define (aether:proposal-valid? p)
   (null? (aether:proposal-errors p)))
 
+; ── Wire format for LLM / external propose edge ──────────────
+; Single line (no '|' inside body):
+;   MUTATE|<name>|<body>|<summary>
+;   SKIP|<name>||<summary>
+; Parser takes first non-empty line; ignores surrounding prose.
+
+(define (aether-num-str n)
+  (if (number? n) (number->string n) "0"))
+
+(define (aether:proposal-prompt fails max-fails)
+  ; Nested append — some hosts truncate multi-arg string-append.
+  (string-append
+    (string-append
+      "Return ONLY one line: MUTATE|gate|(lambda (x) ...)|summary OR SKIP|gate||summary. fail-count="
+      (aether-num-str fails))
+    (string-append
+      " max-fails="
+      (string-append (aether-num-str max-fails)
+                     ". Widen when over budget; skip when healthy."))))
+
+; Prefer first line that contains '|' (wire format); else first non-empty.
+(define (aether-wire-line s)
+  (let ((parts (string-split s "\n")))
+    (let loop ((xs parts) (first-nonempty ""))
+      (cond
+        ((null? xs) first-nonempty)
+        ((equal? (car xs) "") (loop (cdr xs) first-nonempty))
+        ((string-contains? (car xs) "|") (car xs))
+        (else
+         (loop (cdr xs)
+               (if (equal? first-nonempty "") (car xs) first-nonempty)))))))
+
+(define (aether-norm-kind k)
+  (if (or (equal? k "MUTATE") (equal? k "mutate") (equal? k "Mutate"))
+    "mutate"
+    (if (or (equal? k "SKIP") (equal? k "skip") (equal? k "Skip"))
+      "skip"
+      k)))
+
+; Parse external text → proposal list or #f
+(define (aether:parse-proposal-text text source)
+  (if (not (string? text))
+    #f
+    (let ((line (aether-wire-line text)))
+      (if (or (equal? line "") (not (string-contains? line "|")))
+        #f
+        (let ((parts (string-split line "|")))
+          (if (< (length parts) 4)
+            #f
+            (list (aether-norm-kind (list-ref parts 0))
+                  (list-ref parts 1)
+                  (list-ref parts 2)
+                  (list-ref parts 3)
+                  (if (string? source) source "parsed"))))))))
+
 ; ── Propose (rule / stub / live) ─────────────────────────────
 
 (define (aether:propose-rule fails max-fails mode)
@@ -118,17 +175,26 @@
   (try
     (begin
       (require "std/llm" all:)
-      (let ((key (getenv "LLM_API_KEY")))
-        (let ((p (aether:propose-rule fails max-fails mode)))
-          (if (or (void? key) (not (string? key)) (equal? key ""))
-            (list (car p) (car (cdr p)) (car (cdr (cdr p)))
-                  (string-append "llm-nokey:" (car (cdr (cdr (cdr p)))))
-                  "llm-live")
-            ; Live path: escape recorded; still emit schema-valid rule
-            ; proposal until free-form LLM parse is schema-gated.
-            (list (car p) (car (cdr p)) (car (cdr (cdr p)))
-                  (string-append "llm-live-schema:" (car (cdr (cdr (cdr p)))))
-                  "llm-live")))))
+      (let ((key (getenv "LLM_API_KEY"))
+            (fallback (aether:propose-rule fails max-fails mode)))
+        (if (or (void? key) (not (string? key)) (equal? key ""))
+          (list (car fallback) (car (cdr fallback)) (car (cdr (cdr fallback)))
+                (string-append "llm-nokey:" (car (cdr (cdr (cdr fallback)))))
+                "llm-live")
+          ; Live chat → parse wire format → schema gate.
+          ; If parse/schema fails, fall back to rule proposal (still escaped).
+          (let ((raw (try
+                       (llm:chat (aether:proposal-prompt fails max-fails))
+                       (catch (e) ""))))
+            (let ((parsed (aether:parse-proposal-text
+                            (if (string? raw) raw "")
+                            "llm-live")))
+              (if (and parsed (aether:proposal-valid? parsed))
+                parsed
+                (list (car fallback) (car (cdr fallback))
+                      (car (cdr (cdr fallback)))
+                      "llm-parse-fallback"
+                      "llm-live")))))))
     (catch (e)
       (let ((p (aether:propose-rule fails max-fails mode)))
         (list (car p) (car (cdr p)) (car (cdr (cdr p)))

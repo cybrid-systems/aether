@@ -143,7 +143,8 @@ aether/
 │   ├── 04-hot-strategy-heal/
 │   ├── 05-long-run-denseness/
 │   ├── 06-propose-edge-escape/ # Meter E on propose edge only
-│   └── 07-proposal-schema/     # Schema-validate before rebind
+│   ├── 07-proposal-schema/     # Schema-validate before rebind
+│   └── 08-parse-proposal-wire/ # LLM-style wire parse → schema → exec
 └── notes/
     ├── escape-log.md
     └── denseness-report.md
@@ -192,8 +193,9 @@ Scope locked. Phase 1 examples on modular `lib/aether-min.aura`:
 | **04** | Hot strategy deploy + **self-heal** (D) |
 | **05** | Multi-round denseness harness |
 | **06** | Propose-edge **\(E\) metering** (rule E=0 / stub E≥1) |
-| **07** | **Schema gate** — invalid proposals refuse; bad semantics rollback |
+| **07** | **Schema gate** — invalid refuse; bad semantics rollback |
+| **08** | **Wire parse** — prose/garbage/illegal text → structured proposal |
 
 See [`notes/denseness-report.md`](notes/denseness-report.md).
-Evolvable-core escapes = 0 on PASS paths; example 06 meters propose-edge \(E\).
+Evolvable-core escapes = 0 on PASS paths; 06/08 meter propose-edge \(E\).
 Requires Aura #2566–#2570.

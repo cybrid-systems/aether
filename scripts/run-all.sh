@@ -12,6 +12,7 @@ EXAMPLES=(
   examples/05-long-run-denseness/main.aura
   examples/06-propose-edge-escape/main.aura
   examples/07-proposal-schema/main.aura
+  examples/08-parse-proposal-wire/main.aura
 )
 
 fail=0

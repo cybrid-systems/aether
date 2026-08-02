@@ -21,6 +21,7 @@ escapes \(E\) on the world/propose edge only.
 | [05-long-run-denseness](../examples/05-long-run-denseness/) | all smoke | PASS N=10 deploy/skip/poison-heal | 0 |
 | [06-propose-edge-escape](../examples/06-propose-edge-escape/) | E | PASS rule E=0; stub E≥1; core still rolls back bad | 0 core / ≥1 propose-edge (intentional) |
 | [07-proposal-schema](../examples/07-proposal-schema/) | E | PASS schema refuse + semantic rollback | 0 |
+| [08-parse-proposal-wire](../examples/08-parse-proposal-wire/) | E | PASS wire parse from prose; garbage/illegal refuse | 0 core / ≥1 sim-escape |
 
 ## Metrics (practical denseness criteria)
 
@@ -43,8 +44,10 @@ See [escape-log.md](escape-log.md).
 - Example 07 enforces a **structured proposal schema** before rebind: invalid
   kinds/bodies never touch the workspace; schema-valid harmful bodies still
   roll back via business verify.
-- Live LLM (`AETHER_LLM_PROPOSE=live`) is optional and must emit schema-valid
-  proposals only (parse-to-schema still conservative).
+- Live LLM (`AETHER_LLM_PROPOSE=live`) calls `llm:chat` with a strict wire
+  prompt, then `aether:parse-proposal-text` + schema; invalid parse falls back
+  to rule proposal (escape still counted). Wire format:
+  `MUTATE|name|body|summary` / `SKIP|name||summary`.
 
 ## Gaps / residual host constraints
 

@@ -1,0 +1,170 @@
+; examples/08-parse-proposal-wire/main.aura
+;
+; Denseness probe — structured wire parse → schema → execute (Axis E).
+;
+; Simulates external/LLM text on the propose edge without requiring a live
+; API key. Proves: only schema-valid wire lines can reach rebind.
+;
+; Wire format (single line):
+;   MUTATE|<name>|<body>|<summary>
+;   SKIP|<name>||<summary>
+;
+; Run: ./scripts/run-aura.sh examples/08-parse-proposal-wire/main.aura
+
+(require "std/list" all:)
+(require "aether-min" all:)
+(require "aether-propose" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether 08-parse-proposal-wire: text → schema → exec ===")
+(newline)
+
+(define MAX-FAILS 4)
+
+(define installed
+  (aether:install-source "(define gate (lambda (x) (< x 4)))"))
+
+(define (run-batch)
+  (let ((xs (list 1 2 3 4 5 6 7 8 9 10)))
+    (let loop ((ys xs) (ok 0) (bad 0))
+      (if (null? ys)
+        (list ok bad)
+        (if (gate (car ys))
+          (loop (cdr ys) (+ ok 1) bad)
+          (loop (cdr ys) ok (+ bad 1)))))))
+
+(define (fail-count)
+  (car (cdr (run-batch))))
+
+(define (within-budget?)
+  (<= (fail-count) MAX-FAILS))
+
+(display "R0 batch=")
+(display (run-batch))
+(newline)
+(display "prompt-sample length=")
+(display (string-length (aether:proposal-prompt 7 MAX-FAILS)))
+(newline)
+
+; ── A: prose + valid MUTATE line (as if LLM wrapped output) ──
+; Real newlines (Aura treats \n as two chars in some paths).
+(define llm-text-a
+  "Sure, here is my suggestion:
+MUTATE|gate|(lambda (x) (< x 7))|widen-from-llm
+Thanks!")
+(define p-a #f)
+(define r-a #f)
+(set! p-a (aether:parse-proposal-text llm-text-a "llm-sim"))
+(display "A parsed=")
+(write p-a)
+(display " valid?=")
+(display (aether:proposal-valid? p-a))
+(newline)
+(aether:stats-bump! "escapes")
+(set! r-a
+  (aether:execute-proposal
+    p-a
+    (lambda () (fail-count))
+    (lambda () #t)
+    within-budget?))
+(display "A exec=")
+(write r-a)
+(newline)
+(display "A batch=")
+(display (run-batch))
+(newline)
+
+(define a-ok
+  (and (pair? p-a)
+       (aether:proposal-valid? p-a)
+       (eq? (aether:alist-ref ":decision" r-a #f) 'commit)
+       (within-budget?)
+       (>= (aether:stats-ref "escapes") 1)))
+
+; ── B: garbage free-form (no wire line) → parse #f / refuse ──
+(define p-b (aether:parse-proposal-text "just rewrite everything in python lol" "llm-sim"))
+(display "B parsed=")
+(write p-b)
+(newline)
+(define r-b #f)
+(set! r-b
+  (if p-b
+    (aether:execute-proposal p-b
+      (lambda () (fail-count)) (lambda () #t) within-budget?)
+    (list (cons ":ok" #f)
+          (cons ":decision" 'refuse)
+          (cons ":reason" "parse-failed")
+          (cons ":snap" -1))))
+(display "B exec=")
+(write r-b)
+(newline)
+
+(define b-ok
+  (and (not p-b)
+       (eq? (aether:alist-ref ":decision" r-b #f) 'refuse)
+       (within-budget?)))
+
+; ── C: wire line with illegal body → parse may succeed, schema refuse ──
+(define p-c
+  (aether:parse-proposal-text
+    "MUTATE|gate|rm -rf /|hack"
+    "llm-sim"))
+(display "C parsed=")
+(write p-c)
+(display " valid?=")
+(display (if p-c (aether:proposal-valid? p-c) #f))
+(newline)
+(define r-c #f)
+(set! r-c
+  (if p-c
+    (aether:execute-proposal p-c
+      (lambda () (fail-count)) (lambda () #t) within-budget?)
+    (list (cons ":ok" #f) (cons ":decision" 'refuse) (cons ":reason" "parse-failed"))))
+(display "C exec=")
+(write r-c)
+(newline)
+
+(define c-ok
+  (and (pair? p-c)
+       (not (aether:proposal-valid? p-c))
+       (eq? (aether:alist-ref ":decision" r-c #f) 'refuse)
+       (within-budget?)))
+
+; ── D: SKIP wire when healthy ──
+(define p-d
+  (aether:parse-proposal-text "SKIP|gate||hold-steady" "llm-sim"))
+(define r-d #f)
+(set! r-d
+  (aether:execute-proposal p-d
+    (lambda () (fail-count))
+    (lambda () #f)
+    within-budget?))
+(display "D skip exec=")
+(write r-d)
+(newline)
+
+(define d-ok
+  (and (aether:proposal-valid? p-d)
+       (eq? (aether:alist-ref ":decision" r-d #f) 'skip)
+       (within-budget?)
+       (= (fail-count) 4)))
+
+(display "stats ")
+(write (aether:stats-alist))
+(newline)
+
+(define all-ok
+  (and installed a-ok b-ok c-ok d-ok (aether:safety-ok?)))
+
+(if all-ok
+  (begin
+    (display "PASS: wire parse → schema → exec (prose/garbage/illegal/skip)")
+    (newline)
+    (display "propose edge: structured text only; core still verify-gated")
+    (newline))
+  (begin
+    (display "FAIL")
+    (newline)
+    (display (list a-ok b-ok c-ok d-ok (run-batch) (aether:stats-alist)))
+    (newline)))
