@@ -103,12 +103,13 @@ notes/denseness-report.md
 
 ### Phase 1–3 (landed — denseness bar met)
 
-**Offline:** `01`–`08`, `10`–`13` via `./scripts/report.sh` (**12/12**).  
+**Offline:** `01`–`08`, `10`–`14` via `./scripts/report.sh`.  
 **Live:** `09` MiniMax-M3 — `source ./scripts/env-minimax.sh` then run-aura.  
 **Libs:** `aether-min`, `aether-mutate-policy`, `aether-domain`, `aether-propose`,
 `aether-orch`, `aether-region` (+ narrow measure/loop).  
 **Key:** `~/code/keys/minimax`; base `https://api.minimaxi.com/v1`; model `MiniMax-M3`.  
-**Host:** Aura #2566–#2570.
+**Host:** Aura #2566–#2570.  
+**CI:** `.github/workflows/denseness.yml` (structure always; suite when Aura binary available).
 
 Success bar: evolvable core in pure Aura; full observe/rollback; honest escape log;
 business-logic escape rate ≪ 10–15%. **Met** — see `notes/denseness-report.md` judgment.
@@ -119,12 +120,12 @@ Phase highlights:
 |-------|--------|
 | 1 | 01–03 loop / business / dual-role |
 | 2 | 04–05 hot heal + N=10 + first report |
-| 3 | 06–09 propose \(E\); 10 N=50; 11–12 orch; axis split; 13 multi-tenant; final report |
+| 3 | 06–09 propose \(E\); 10–14 N-stress; 11–12 orch; axis split; 13 multi-tenant; CI; final report |
 
-### Optional later (not required for denseness claim)
+### Upstream-blocked (see `notes/host-residuals.md`)
 
-- N=100+ soak; true fiber parallel when host fixed  
-- Extract A+F from `aether-min` when cross-module free-vars survive rebind  
+- True fiber parallel when H5/H6 fixed  
+- Extract A+F from `aether-min` when H3/H4 fixed  
 
 ### Not Aether’s job alone
 

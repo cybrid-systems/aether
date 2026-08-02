@@ -6,7 +6,7 @@ Each example is a **runnable denseness probe**. Convention:
 2. Print machine line: `RESULT pass|fail example=… key=val…`
 3. Prefer `aether-min` / `aether-domain` / `aether-propose` / `aether-orch` / `aether-region`
 
-Phase 1–3 offline suite is **12/12** (`./scripts/report.sh`). Judgment:
+Phase 1–3 offline suite includes N=100 soak (`./scripts/report.sh`). Judgment:
 [`notes/denseness-report.md`](../notes/denseness-report.md).
 
 ## Offline suite (`./scripts/run-all.sh` / `report.sh`)
@@ -25,6 +25,7 @@ Phase 1–3 offline suite is **12/12** (`./scripts/report.sh`). Judgment:
 | `11-arbitrated-multi` | Multi-propose + pure-Aura arbiter |
 | `12-parallel-yield` | Fanout + yield barriers + arbiter |
 | `13-multi-tenant-region` | Name-isolated multi-tenant rebind |
+| `14-long-n-100` | N=100 denseness soak |
 
 ## Live (not in run-all)
 

@@ -3,8 +3,9 @@
 **Date:** 2026-08-02  
 **Host:** Aura (local `aura-grok`) with fixes #2566–#2570  
 **Surface:** `aether-min` · `aether-mutate-policy` · `aether-domain` · `aether-propose` · `aether-orch` · `aether-region`  
-**Last offline suite:** [last-run-report.md](last-run-report.md) — **12 / 12 PASS**  
-**Live:** example 09 MiniMax-M3 (manual; needs key)
+**Last offline suite:** [last-run-report.md](last-run-report.md)  
+**Live:** example 09 MiniMax-M3 (manual; needs key)  
+**CI:** structure always; denseness when Aura binary available (`.github/workflows/denseness.yml`)
 
 ---
 
@@ -52,8 +53,9 @@ Aether does **not** claim denseness over all of \(S_{\mathrm{practical}}\).
 | [11-arbitrated-multi](../examples/11-arbitrated-multi/) | C E | PASS multi-propose + arbiter | 0 |
 | [12-parallel-yield](../examples/12-parallel-yield/) | C | PASS fanout + yield + single executor | 0 |
 | [13-multi-tenant-region](../examples/13-multi-tenant-region/) | B D | PASS name-isolated multi-tenant rebind | 0 |
+| [14-long-n-100](../examples/14-long-n-100/) | A B D F | PASS N=100 poison/heal soak; safety-ok | 0 |
 
-Offline automation covers **01–08, 10–13** (12 probes). Live **09** is opt-in.
+Offline automation covers **01–08, 10–14**. Live **09** is opt-in.
 
 ---
 
@@ -65,7 +67,7 @@ Offline automation covers **01–08, 10–13** (12 probes). Live **09** is opt-i
 | Escape on decide/verify/rollback | No | **None** |
 | Safe-path rollback reliability | ≈100% | Bad proposals / poison recovered via snapshot or last-good |
 | Per-round observability | Full | `aether:stats-alist` + `RESULT` lines |
-| Multi-round boundary health | N≥10 | N=10 (05), **N=50** (10); `aether:safety-ok?` |
+| Multi-round boundary health | N≥10 | N=10 (05), N=50 (10), **N=100** (14); `aether:safety-ok?` |
 | Multi-tenant isolation | No cross-talk | 13: mutate A leaves B metrics unchanged |
 | Orch without external queue | In \(V_A\) | 11–12 pure-Aura arbiter + yield fanout |
 
@@ -104,25 +106,26 @@ Details: [lib/README.md](../lib/README.md).
 
 ## Host residuals (not denseness failures)
 
-Workarounds for CLI / packaging — claim is about \(S_{\mathrm{Aether}}\) semantics, not host polish:
+Workarounds for CLI / packaging — claim is about \(S_{\mathrm{Aether}}\) semantics, not host polish.
+Actionable table: [host-residuals.md](host-residuals.md) (H1–H8).
 
 1. Sequential `let`; multi-binding `let` can mis-bind.  
 2. Verify with `(eq? x #t)`.  
-3. Large trailing `define` in multi-export modules may fail to export.  
-4. Cross-module free-vars / private cells break after `set-code`+rebind → stats+`loop-once` stay **same-module** in `aether-min`.  
-5. `fiber:spawn` / `orch:parallel` closure and free-var issues → cooperative `sequential-yield` fanout.  
-6. `std/hot-update` AOT-oriented → strategy rebind for hot path (04).
+3. Large trailing `define` may fail to export.  
+4. Cross-module free-vars break after rebind → embed A+F in `aether-min`.  
+5. Fiber / `orch:parallel` issues → `sequential-yield` fanout.  
+6. `std/hot-update` AOT-oriented → strategy rebind (04).
 
 ---
 
 ## Judgment (Phase 1–3)
 
 **On the claimed subspace \(S_{\mathrm{Aether}}\) and the constructive probe suite
-(12 offline + 1 live), \(V_A\) is practically dense on the evolvable core.**
+(offline suite incl. N=100 + 1 live), \(V_A\) is practically dense on the evolvable core.**
 
 Supporting facts:
 
-- O→D→M→V→R, business decide, hot heal, N=50 stress, multi-tenant isolation,
+- O→D→M→V→R, business decide, hot heal, N=50/100 soak, multi-tenant isolation,
   multi-propose arbitration, and yield-disciplined fanout all run in pure Aura
   with **zero core escapes** on PASS paths.  
 - World I/O (\(E\)) is confined to the **propose edge**, schema-gated, and
@@ -142,15 +145,16 @@ denseness for numerical kernels, hard realtime, drivers, or arbitrary product do
 |-------|--------|--------|
 | 1 | Minimal loop, business signal, dual-role | **Landed** |
 | 2 | Hot heal, long-run N=10, first report | **Landed** |
-| 3 | Propose E, schema/wire/live, N=50, orch, yield, axis split, multi-tenant | **Landed** |
-| Later | N=100+, true fiber parallel, full A+F module split when host fixed | Optional |
+| 3 | Propose E, schema/wire/live, N=50–100, orch, yield, axis split, multi-tenant, CI | **Landed** |
+| Upstream-blocked | True fiber parallel; full A+F extract | [host-residuals.md](host-residuals.md) |
 
 ---
 
 ## How to reproduce
 
 ```bash
-./scripts/report.sh                 # offline 12/12 → notes/last-run-report.md
+./scripts/check-structure.sh        # no Aura binary required
+./scripts/report.sh                 # offline suite → notes/last-run-report.md
 ./scripts/run-all.sh                # same suite
 source ./scripts/env-minimax.sh
 ./scripts/run-aura.sh examples/09-live-minimax/main.aura
@@ -158,9 +162,8 @@ source ./scripts/env-minimax.sh
 
 ---
 
-## Optional next measurements
+## Remaining outside denseness bar
 
-- N=100+ soak if product needs longer multi-round evidence.  
-- Re-enable true fiber parallel when host closure capture is fixed.  
-- Extract embedded A+F from `aether-min` when cross-module free-vars survive rebind.  
-- Broader Unify spans outside \(S_{\mathrm{Aether}}\) (not Aether’s sole job).
+- Upstream host fixes (H1–H8) then optional Aether follow-ups listed in host-residuals.  
+- Broader Unify spans outside \(S_{\mathrm{Aether}}\) (not Aether’s sole job).  
+- Product systems that *use* Aether shapes (real policies, multi-session) — separate programs.

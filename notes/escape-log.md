@@ -20,7 +20,7 @@ Host configuration used for demos (not counted as \(V_A\) escapes of the evolvab
 - `AURA_SANDBOX=off` — CLI must allow workspace mutation; production isolation remains Aura’s responsibility.
 - `AURA_PIPELINE_STRICT=0` — some host builds forbid tree-walker fallback; demo scripts relax this for reproducibility.
 
-### Offline suite PASS paths (01–08, 10–13)
+### Offline suite PASS paths (01–08, 10–14)
 
 No business-logic escapes on the evolvable core. Propose-edge \(E\) is metered
 only where intentional (06 stub, 08 sim, 09 live).

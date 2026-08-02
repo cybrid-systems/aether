@@ -147,10 +147,12 @@ aether/
 │   ├── _template/              # Copy to add a new probe
 │   ├── README.md               # Probe index + conventions
 │   ├── 01–09 denseness + live MiniMax
-│   ├── 10-long-n-stress/ … 12-parallel-yield/
-│   └── 13-multi-tenant-region/ # Name-isolated multi-tenant rebind
+│   ├── 10-long-n-stress/ … 14-long-n-100/
+│   └── 13-multi-tenant-region/
+├── .github/workflows/denseness.yml
 └── notes/
     ├── escape-log.md
+    ├── host-residuals.md
     └── denseness-report.md
 ```
 
@@ -160,7 +162,7 @@ aether/
 |-------|--------|-----------|
 | **1** | 01–03 | Minimal loop, business decide, dual-role; core \(E\)=0 |
 | **2** | 04–05 | Hot heal + N=10 harness; first denseness write-up |
-| **3** | 06–13 | Propose \(E\), schema/wire/live LLM, N=50, arbiter, yield fanout, axis libs, multi-tenant |
+| **3** | 06–14 | Propose \(E\), schema/wire/live LLM, N=50–100, arbiter, yield, multi-tenant, CI |
 
 | # | Probe | Axes | Answers |
 |---|-------|------|---------|
@@ -177,6 +179,7 @@ aether/
 | 11 | Arbitrated multi | C E | Multi-propose without external queue? |
 | 12 | Parallel + yield | C | Fanout + yield + single mutator? |
 | 13 | Multi-tenant region | B D | Name-isolated rebind? |
+| 14 | Long-N N=100 | A B D F | Longer soak still pure + safety-ok? |
 
 ## Escape discipline
 
@@ -195,12 +198,13 @@ Apache License 2.0 (same as Aura)
 ## Status — Phase 1–3 complete
 
 **Judgment:** on \(S_{\mathrm{Aether}}\), \(V_A\) is **practically dense** on the
-evolvable core (12/12 offline PASS; live 09 opt-in). Full write-up:
+evolvable core (offline suite incl. N=100; live 09 opt-in). Full write-up:
 [`notes/denseness-report.md`](notes/denseness-report.md).
 
 ```bash
-./scripts/report.sh                 # offline 12 probes → notes/last-run-report.md
-./scripts/run-all.sh                # same suite
+./scripts/check-structure.sh        # no Aura binary required (also CI)
+./scripts/report.sh                 # offline denseness suite → notes/last-run-report.md
+./scripts/run-all.sh
 source ./scripts/env-minimax.sh
 ./scripts/run-aura.sh examples/09-live-minimax/main.aura
 ```
@@ -220,7 +224,9 @@ source ./scripts/env-minimax.sh
 | **11** | **Arbitrated** multi-propose (pure Aura) |
 | **12** | **Yield fanout** multi-propose + single executor |
 | **13** | **Multi-tenant** name-isolated rebind |
+| **14** | **N=100** denseness soak |
 
 New probe: copy `examples/_template` → `examples/NN-name`, add to `run-all.sh` / `report.sh` if offline.
 
+Host residual tracker: [`notes/host-residuals.md`](notes/host-residuals.md).  
 See [`examples/README.md`](examples/README.md), [`lib/README.md`](lib/README.md), [`prompts/GROK.md`](prompts/GROK.md).
