@@ -15,6 +15,7 @@ EXAMPLES=(
   examples/08-parse-proposal-wire/main.aura
   examples/10-long-n-stress/main.aura
   examples/11-arbitrated-multi/main.aura
+  examples/12-parallel-yield/main.aura
 )
 
 fail=0

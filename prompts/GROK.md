@@ -119,8 +119,8 @@ escape log honest; business-logic escape rate aimed &lt; 10–15%. Met offline 8
 
 - **10** — longer-N denseness stress (N=50 poison/heal) — landed  
 - **11** — arbitrated multi-agent (`aether-orch`) — landed  
-- Optional next: parallel+yield topology; split `aether-min` into axis modules  
-- Multi-tenant region isolation only if product needs it  
+- **12** — parallel+yield fanout (`aether:fanout-with-yield`) — landed  
+- Optional next: split `aether-min` into axis modules; multi-tenant if needed  
 
 ### Later / not Aether’s job alone
 

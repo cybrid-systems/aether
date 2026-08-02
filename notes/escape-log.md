@@ -51,3 +51,17 @@ No business-logic escapes on evolvable core.
 - Mitigation: wire parse + body banlist; invalid LLM bodies refuse/rebind-fail;
   fallback rule proposal still schema-valid
 
+### Example 12 — host residual (not a core escape)
+
+## [2026-08-02] Fiber / orch:parallel not used on PASS path
+
+- Location: measured against `fiber:spawn`, `std/orchestrator` `orch:parallel`;
+  denseness path is `aether:fanout-with-yield` in `lib/aether-orch.aura`
+- Reason: host multi-fiber workers can mis-capture closures (all workers see
+  last lambda); `orch:parallel` free-vars (`orch-yield-safe`) break after
+  workspace rebind
+- Escape mechanism: **none** on PASS — cooperative sequential-yield is pure Aura
+- Impact: true OS-level parallel scheduling deferred; topology (multi-propose ·
+  yield · arbitrate · single mutate) still in \(V_A\)
+- Mitigation: document host residual; re-enable fiber path when capture is fixed
+
