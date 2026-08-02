@@ -175,9 +175,16 @@ Apache License 2.0 (same as Aura)
 
 ## Status
 
-Scope and denseness criteria locked. **Example 01** is runnable:
+Scope locked. **Example 01** runs on modular `lib/aether-min.aura`:
 
-- Observe wrong self-logic → safe `mutate:rebind` → business verify → commit  
+```bash
+./scripts/run-aura.sh examples/01-single-loop/main.aura
+# PASS: O→D→M→V→R closed loop (commit + skip + rollback)
+```
+
+- Observe wrong self-logic → safe rebind → business verify → commit  
 - Skip when already correct  
-- Bad proposal → verify fail → `ast:restore` rollback  
-- Zero escapes in the evolvable core (see `examples/01-single-loop/`)
+- Bad proposal → verify fail → snapshot rollback  
+- Zero escapes in the evolvable core  
+
+Requires Aura host with module/mutation fixes (#2566–#2570).

@@ -101,18 +101,14 @@ notes/denseness-report.md
 
 ## Phase plan
 
-### Phase 1 (current priority)
+### Phase 1
 
-**Example 01 — minimal self-evolving loop (no LLM required)**
+**Example 01 — done** (`examples/01-single-loop` + `lib/aether-min.aura`)
 
-1. Observe a simple self-signal (error / performance / decision metrics).  
-2. Decide that a code-level change is needed.  
-3. Apply mutation under guards.  
-4. Verify new behavior.  
-5. Roll back cleanly if verification fails.  
-6. Record loop stats; zero or documented escapes.
+Modular O→D→M→V→R: commit / skip / rollback, hash stats, symbol decisions,
+`(require "aether-min" all:)`. Host prerequisites: Aura #2566–#2570.
 
-Then, still Phase 1:
+**Next**
 
 - **02** — business-signal-driven decisions (not only engine counters)  
 - **03** — researcher + executor; if LLM is used, confine \(E\) to propose edge  

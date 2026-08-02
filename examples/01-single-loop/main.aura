@@ -1,179 +1,140 @@
 ; examples/01-single-loop/main.aura
 ;
-; Phase 1 denseness probe — minimal self-evolving closed loop (no LLM).
-; Linear script (no multi-step helper closures) for aura-grok CLI stability.
+; Phase 1 denseness probe — self-evolving closed loop (no LLM).
+; Thin demo over (require "aether-min" all:).
 ;
-; O→D→M→V→R:
-;   R1 commit: double → triple under mutate:rebind + verify
-;   R2 skip: already correct
-;   R3 rollback: bad rebind fails verify → ast:restore
+; Axes: A (loop) + B (mutation policy) + F (metrology)
+;
+; Scenario:
+;   score starts as (* x 2); goal is triple (* x 3).
+;   R1: observe wrong → mutate → verify → commit
+;   R2: already correct → skip
+;   R3: bad proposal → verify fail → rollback → still triple
 ;
 ; Run: ./scripts/run-aura.sh examples/01-single-loop/main.aura
 
-(require "std/mutate" all:)
+(require "aether-min" all:)
+
+(aether:stats-reset!)
 
 (display "=== Aether 01-single-loop: self-evolving closed loop ===")
 (newline)
 
-; Seed subject
-(set-code "(define score (lambda (x) (* x 2)))")
-(eval-current)
+(define installed
+  (aether:install-source "(define score (lambda (x) (* x 2)))"))
 
-(display "installed score = double; goal = triple")
-(newline)
-(display "R1 observe score(7)=")
-(display (score 7))
-(display " (want 21)")
-(newline)
-
-; Counters (list-boxes)
-(define n-rounds (list 0))
-(define n-commits (list 0))
-(define n-rollbacks (list 0))
-(define n-skip (list 0))
-(define n-verify-fail (list 0))
-
-; ═══════════════ Round 1: Observe → Decide → Mutate → Verify → Commit ═══════════════
-(set-car! n-rounds (+ (car n-rounds) 1))
-(define need1 (not (= (score 7) 21)))
-(define r1-decision "refuse")
-
-(if need1
+(if (not installed)
   (begin
-    (define snap1 (ast:snapshot "r1-to-triple"))
-    (try (mutate:safe-yield) (catch (e) #f))
-    (define mut1 (mutate:rebind "score" "(lambda (x) (* x 3))" "r1-to-triple"))
-    (if (eq? mut1 #t)
-      (begin
-        (eval-current)
-        (if (= (score 7) 21)
-          (begin
-            (set-car! n-commits (+ (car n-commits) 1))
-            (set! r1-decision "commit"))
-          (begin
-            (set-car! n-verify-fail (+ (car n-verify-fail) 1))
-            (set-car! n-rollbacks (+ (car n-rollbacks) 1))
-            (ast:restore snap1)
-            (eval-current)
-            (set! r1-decision "rollback"))))
-      (begin
-        (set-car! n-rollbacks (+ (car n-rollbacks) 1))
-        (set! r1-decision "refuse"))))
-  (begin
-    (set-car! n-skip (+ (car n-skip) 1))
-    (set! r1-decision "skip")))
-
-(display "R1 decision=")
-(display r1-decision)
-(display " score(7)=")
-(display (score 7))
-(newline)
-
-; ═══════════════ Round 2: already correct → skip ═══════════════
-(set-car! n-rounds (+ (car n-rounds) 1))
-(define need2 (not (= (score 7) 21)))
-(define r2-decision "refuse")
-
-(if need2
-  (begin
-    (define snap2 (ast:snapshot "r2"))
-    (define mut2 (mutate:rebind "score" "(lambda (x) (* x 3))" "r2"))
-    (if (eq? mut2 #t)
-      (begin
-        (eval-current)
-        (if (= (score 7) 21)
-          (begin
-            (set-car! n-commits (+ (car n-commits) 1))
-            (set! r2-decision "commit"))
-          (begin
-            (set-car! n-verify-fail (+ (car n-verify-fail) 1))
-            (set-car! n-rollbacks (+ (car n-rollbacks) 1))
-            (ast:restore snap2)
-            (eval-current)
-            (set! r2-decision "rollback"))))
-      (set! r2-decision "refuse")))
-  (begin
-    (set-car! n-skip (+ (car n-skip) 1))
-    (set! r2-decision "skip")))
-
-(display "R2 decision=")
-(display r2-decision)
-(display " score(7)=")
-(display (score 7))
-(newline)
-
-; ═══════════════ Round 3: bad proposal → verify fail → rollback ═══════════════
-(set-car! n-rounds (+ (car n-rounds) 1))
-(define snap3 (ast:snapshot "r3-bad"))
-(try (mutate:safe-yield) (catch (e) #f))
-(define mut3 (mutate:rebind "score" "(lambda (x) (* x 99))" "r3-bad"))
-(define r3-decision "refuse")
-(define score-mid 0)
-
-(if (eq? mut3 #t)
-  (begin
-    (eval-current)
-    (set! score-mid (score 7))
-    (if (= (score 7) 21)
-      (begin
-        (set-car! n-commits (+ (car n-commits) 1))
-        (set! r3-decision "commit"))
-      (begin
-        (set-car! n-verify-fail (+ (car n-verify-fail) 1))
-        (set-car! n-rollbacks (+ (car n-rollbacks) 1))
-        (ast:restore snap3)
-        (eval-current)
-        (set! r3-decision "rollback"))))
-  (begin
-    (set-car! n-rollbacks (+ (car n-rollbacks) 1))
-    (set! r3-decision "refuse")))
-
-(display "R3 decision=")
-(display r3-decision)
-(display " mid-score=")
-(display score-mid)
-(display " after-score=")
-(display (score 7))
-(newline)
-
-(display "stats rounds=")
-(display (car n-rounds))
-(display " commits=")
-(display (car n-commits))
-(display " rollbacks=")
-(display (car n-rollbacks))
-(display " skip=")
-(display (car n-skip))
-(display " verify-fail=")
-(display (car n-verify-fail))
-(newline)
-
-(define all-ok
-  (and (= (score 7) 21)
-       (equal? r1-decision "commit")
-       (equal? r2-decision "skip")
-       (equal? r3-decision "rollback")
-       (= (car n-commits) 1)
-       (>= (car n-rollbacks) 1)
-       (>= (car n-skip) 1)
-       (= (car n-rounds) 3)
-       (not (= score-mid 21))))
-
-(if all-ok
-  (begin
-    (display "PASS: O→D→M→V→R closed loop (commit + skip + rollback)")
-    (newline)
-    (display "escapes: 0 in evolvable core (pure Aura on host stdlib)")
+    (display "FAIL: could not install subject source")
     (newline))
   (begin
-    (display "FAIL: closed-loop checks did not all pass")
+    (display "installed score = double; goal = triple")
     (newline)
-    (display "  r1=")
-    (display r1-decision)
-    (display " r2=")
-    (display r2-decision)
-    (display " r3=")
-    (display r3-decision)
-    (display " score=")
+    (display "R1 observe score(7)=")
     (display (score 7))
-    (newline)))
+    (display " (want 21)")
+    (newline)
+
+    ; ── Round 1: commit ──
+    (define r1
+      (aether:loop-once
+        (lambda () (score 7))
+        (lambda () (not (= (score 7) 21)))
+        "score"
+        "(lambda (x) (* x 3))"
+        "r1-to-triple"
+        (lambda () (= (score 7) 21))))
+
+    (display "R1 result: ")
+    (write r1)
+    (newline)
+    (display "R1 score(7)=")
+    (display (score 7))
+    (newline)
+
+    ; ── Round 2: skip ──
+    (define r2
+      (aether:loop-once
+        (lambda () (score 7))
+        (lambda () (not (= (score 7) 21)))
+        "score"
+        "(lambda (x) (* x 3))"
+        "r2-noop"
+        (lambda () (= (score 7) 21))))
+
+    (display "R2 result: ")
+    (write r2)
+    (newline)
+    (display "R2 score(7)=")
+    (display (score 7))
+    (newline)
+
+    ; ── Round 3: force bad mutate → rollback ──
+    (define r3
+      (aether:loop-once
+        (lambda () (score 7))
+        (lambda () #t)
+        "score"
+        "(lambda (x) (* x 99))"
+        "r3-bad-proposal"
+        (lambda () (= (score 7) 21))))
+
+    (display "R3 result: ")
+    (write r3)
+    (newline)
+    (display "R3 score(7) after rollback=")
+    (display (score 7))
+    (newline)
+
+    (display "stats: ")
+    (write (aether:stats-alist))
+    (newline)
+    (display "boundary/quota ok: ")
+    (display (aether:safety-ok?))
+    (newline)
+
+    (define r1-ok
+      (and (aether:alist-ref ":ok" r1 #f)
+           (eq? (aether:alist-ref ":decision" r1 #f) 'commit)
+           (= (score 7) 21)))
+    (define r2-ok
+      (and (aether:alist-ref ":ok" r2 #f)
+           (eq? (aether:alist-ref ":decision" r2 #f) 'skip)
+           (= (score 7) 21)))
+    (define r3-ok
+      (and (not (aether:alist-ref ":ok" r3 #t))
+           (eq? (aether:alist-ref ":decision" r3 #f) 'rollback)
+           (= (score 7) 21)))
+
+    (define all-ok
+      (and r1-ok r2-ok r3-ok
+           (aether:safety-ok?)
+           (= (aether:stats-ref "commits") 1)
+           (>= (aether:stats-ref "rollbacks") 1)
+           (>= (aether:stats-ref "decide-skip") 1)
+           (= (aether:stats-ref "rounds") 3)
+           (= (aether:stats-ref "escapes") 0)))
+
+    (if all-ok
+      (begin
+        (display "PASS: O→D→M→V→R closed loop (commit + skip + rollback)")
+        (newline)
+        (display "escapes: 0 in evolvable core (pure Aura + aether-min)")
+        (newline))
+      (begin
+        (display "FAIL: closed-loop checks did not all pass")
+        (newline)
+        (display "  r1-ok=")
+        (display r1-ok)
+        (display " r2-ok=")
+        (display r2-ok)
+        (display " r3-ok=")
+        (display r3-ok)
+        (newline)
+        (display "  commits=")
+        (display (aether:stats-ref "commits"))
+        (display " rollbacks=")
+        (display (aether:stats-ref "rollbacks"))
+        (display " skip=")
+        (display (aether:stats-ref "decide-skip"))
+        (newline)))))
