@@ -145,9 +145,13 @@
     (display "PASS: dual-role loop (researcher propose + executor guard)")
     (newline)
     (display "escapes: 0 core; propose edge pure-Aura (LLM optional, not required)")
+    (newline)
+    (display "RESULT pass example=03-researcher-executor escapes=0")
     (newline))
   (begin
     (display "FAIL")
+    (newline)
+    (display "RESULT fail example=03-researcher-executor")
     (newline)
     (display (list (car p1) (car p2) (car p3)
                    (aether:alist-ref ":decision" r1 #f)

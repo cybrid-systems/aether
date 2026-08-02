@@ -165,9 +165,13 @@
     (display "PASS: propose-edge E metering (rule E=0; stub E>=1; core still guarded)")
     (newline)
     (display "escape isolation: executor verify/rollback independent of propose source")
+    (newline)
+    (display "RESULT pass example=06-propose-edge-escape rule_escapes=0 stub_escapes=1")
     (newline))
   (begin
     (display "FAIL")
+    (newline)
+    (display "RESULT fail example=06-propose-edge-escape")
     (newline)
     (display (list a-ok b-ok c-ok
                    (aether:stats-ref "escapes")

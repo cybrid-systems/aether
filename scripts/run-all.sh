@@ -37,3 +37,8 @@ if [[ "$fail" -ne 0 ]]; then
   exit 1
 fi
 echo "run-all: ALL PASSED (${#EXAMPLES[@]} examples)"
+# Optional denseness report (same suite)
+if [[ "${AETHER_WRITE_REPORT:-1}" == "1" ]]; then
+  ./scripts/report.sh >/dev/null || true
+  echo "report: notes/last-run-report.md"
+fi

@@ -184,6 +184,8 @@
     (newline)
     (display "escapes: 0; business fail-count within budget at end")
     (newline)
+    (display "RESULT pass example=05-long-run-denseness escapes=0")
+    (newline)
     (display "DENSENESS_SUMMARY deploys=")
     (display deploys)
     (display " heals=")
@@ -197,6 +199,8 @@
     (newline))
   (begin
     (display "FAIL")
+    (newline)
+    (display "RESULT fail example=05-long-run-denseness")
     (newline)
     (display (list (run-batch) deploys skips poisons heals
                    (aether:stats-alist)))

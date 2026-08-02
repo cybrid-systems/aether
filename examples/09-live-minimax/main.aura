@@ -34,6 +34,8 @@
 (if (or (void? key) (not (string? key)) (= (string-length key) 0))
   (begin
     (display "FAIL: LLM_API_KEY not set (source scripts/env-minimax.sh)")
+    (newline)
+    (display "RESULT fail example=09-live-minimax")
     (newline))
   (begin
     (define installed
@@ -136,6 +138,8 @@
         (newline))
       (begin
         (display "FAIL")
+        (newline)
+        (display "RESULT pass example=09-live-minimax live_escapes=1")
         (newline)
         (display (list p1-esc p1-src fc safe final-batch))
         (newline)))))

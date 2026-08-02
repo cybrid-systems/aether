@@ -26,6 +26,8 @@
 (if (not installed)
   (begin
     (display "FAIL: could not install subject source")
+    (newline)
+    (display "RESULT fail example=01-single-loop")
     (newline))
   (begin
     (display "installed score = double; goal = triple")
@@ -120,7 +122,9 @@
         (display "PASS: O→D→M→V→R closed loop (commit + skip + rollback)")
         (newline)
         (display "escapes: 0 in evolvable core (pure Aura + aether-min)")
-        (newline))
+        (newline)
+    (display "RESULT pass example=01-single-loop escapes=0")
+    (newline))
       (begin
         (display "FAIL: closed-loop checks did not all pass")
         (newline)

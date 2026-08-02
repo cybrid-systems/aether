@@ -135,8 +135,12 @@ aether/
 │   └── GROK.md              # Living prompt for continued generation
 ├── lib/
 │   ├── aether-min.aura         # A+B+F closed-loop surface
-│   └── aether-propose.aura     # Propose edge (rule / stub / live)
+│   ├── aether-propose.aura     # Propose edge (rule / stub / live)
+│   └── aether-domain.aura      # Shared gate workload (02–09)
 ├── examples/
+│   ├── _template/              # Copy to add a new probe
+│   ├── README.md               # Probe index + conventions
+
 │   ├── 01-single-loop/
 │   ├── 02-business-signal/
 │   ├── 03-researcher-executor/
@@ -198,6 +202,13 @@ Scope locked. Phase 1 examples on modular `lib/aether-min.aura`:
 | **08** | **Wire parse** — prose/garbage/illegal text → structured proposal |
 | **09** | **Live MiniMax-M3** propose edge (`source ./scripts/env-minimax.sh`) |
 
-Offline suite: `./scripts/run-all.sh` (01–08). Live: `source ./scripts/env-minimax.sh && ./scripts/run-aura.sh examples/09-live-minimax/main.aura`.
+```bash
+./scripts/run-all.sh              # 01–08 + writes notes/last-run-report.md
+./scripts/report.sh               # suite + denseness table only
+source ./scripts/env-minimax.sh
+./scripts/run-aura.sh examples/09-live-minimax/main.aura   # live
+```
 
-See [`notes/denseness-report.md`](notes/denseness-report.md).
+New probe: copy `examples/_template` → `examples/NN-name`, add to `run-all.sh` if offline.
+
+See [`notes/denseness-report.md`](notes/denseness-report.md) and [`examples/README.md`](examples/README.md).

@@ -170,9 +170,13 @@
     (display "PASS: hot strategy deploy + self-heal to last-good")
     (newline)
     (display "escapes: 0 in evolvable core (pure Aura + aether-min)")
+    (newline)
+    (display "RESULT pass example=04-hot-strategy-heal escapes=0")
     (newline))
   (begin
     (display "FAIL")
+    (newline)
+    (display "RESULT fail example=04-hot-strategy-heal")
     (newline)
     (display (list (aether:alist-ref ":decision" r1 #f)
                    (aether:alist-ref ":decision" r2 #f)

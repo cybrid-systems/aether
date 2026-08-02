@@ -1,0 +1,40 @@
+; examples/_template/main.aura — copy to examples/NN-short-name/main.aura
+;
+; Denseness probe template.
+; 1. Seed subject (or aether:gate-install-strict)
+; 2. Run O→D→M→V→R (or propose→execute)
+; 3. Assert + print PASS/FAIL
+; 4. Last line MUST be machine-readable RESULT
+;
+; Run: ./scripts/run-aura.sh examples/NN-short-name/main.aura
+
+(require "std/list" all:)
+(require "aether-min" all:)
+; (require "aether-domain" all:)
+; (require "aether-propose" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether NN-short-name: one-line denseness claim ===")
+(newline)
+
+; ── seed ──
+(define installed
+  (aether:install-source "(define subject (lambda (x) (+ x 1)))"))
+
+; ── scenario (replace) ──
+(define ok #f)
+(set! ok (and installed (aether:safety-ok?)))
+
+(if ok
+  (begin
+    (display "PASS: template smoke (replace with real claim)")
+    (newline)
+    ; Machine line for run-all / report.sh (keep keys simple):
+    (display "RESULT pass example=NN-short-name escapes=0")
+    (newline))
+  (begin
+    (display "FAIL: template")
+    (newline)
+    (display "RESULT fail example=NN-short-name")
+    (newline)))

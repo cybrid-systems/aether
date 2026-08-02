@@ -1,0 +1,48 @@
+; lib/aether-domain.aura — shared denseness domain: admit-gate workload
+;
+; (require "aether-domain" all:)
+;
+; Fixed workload 1..10; policy binding name is `gate`.
+; Budget: fails <= 4 (40%). Used by examples 02–09.
+;
+; Bodies are module-level strings (host-friendly; avoid nested-if string lists).
+
+(export aether:gate-max-fails
+        aether:gate-body-strict
+        aether:gate-body-widen
+        aether:gate-body-deny
+        aether:gate-install-strict
+        aether:gate-run-batch
+        aether:gate-fail-count
+        aether:gate-ok-count
+        aether:gate-within-budget?)
+
+(require "aether-min" all:)
+
+(define aether:gate-max-fails 4)
+(define aether:gate-body-strict "(lambda (x) (< x 4))")
+(define aether:gate-body-widen "(lambda (x) (< x 7))")
+(define aether:gate-body-deny "(lambda (x) #f)")
+
+(define (aether:gate-install-strict)
+  (aether:install-source "(define gate (lambda (x) (< x 4)))"))
+
+; Count (ok fails) under current `gate` over 1..10.
+(define (aether:gate-run-batch)
+  (let ((xs (list 1 2 3 4 5 6 7 8 9 10)))
+    (let loop ((ys xs) (ok 0) (bad 0))
+      (if (null? ys)
+        (list ok bad)
+        (if (gate (car ys))
+          (loop (cdr ys) (+ ok 1) bad)
+          (loop (cdr ys) ok (+ bad 1)))))))
+
+(define (aether:gate-fail-count)
+  (car (cdr (aether:gate-run-batch))))
+
+(define (aether:gate-ok-count)
+  (car (aether:gate-run-batch)))
+
+; Literal 4 — avoids free-var MAX-FAILS staleness after rebind on some hosts.
+(define (aether:gate-within-budget?)
+  (<= (aether:gate-fail-count) 4))

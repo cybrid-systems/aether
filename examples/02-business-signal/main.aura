@@ -1,146 +1,111 @@
 ; examples/02-business-signal/main.aura
 ;
-; Phase 1 denseness probe — business-signal-driven closed loop (no LLM).
-;
-; Axes: A + B + F
-; Decide from domain fail-count, not engine mutation counters alone.
-;
-; Workload 1..10; gate admits x; budget fails <= 4 (40%).
-;   Initial: (gate x) = (< x 4)  → 3 ok / 7 fails
-;   Good:    (< x 7)             → 6 ok / 4 fails
-;   Bad:     #f always           → rollback
+; Business-signal denseness probe (fail-count budget) via aether-domain.
 ;
 ; Run: ./scripts/run-aura.sh examples/02-business-signal/main.aura
 
 (require "std/list" all:)
 (require "aether-min" all:)
+(require "aether-domain" all:)
 
 (aether:stats-reset!)
 
 (display "=== Aether 02-business-signal: fail-rate driven closed loop ===")
 (newline)
 
-(define MAX-FAILS 4)
-
-; Seed first (same pattern as example 01).
-(define installed
-  (aether:install-source "(define gate (lambda (x) (< x 4)))"))
+(define installed (aether:gate-install-strict))
 
 (display "installed=")
 (display installed)
-(display " gate samples ")
-(display (list (gate 3) (gate 4) (gate 6) (gate 7)))
+(display " gate=")
+(display (list (gate 3) (gate 4) (gate 7)))
 (newline)
-
-; Helpers after seed.
-(define (run-batch)
-  (let ((xs (list 1 2 3 4 5 6 7 8 9 10)))
-    (let loop ((ys xs) (ok 0) (bad 0))
-      (if (null? ys)
-        (list ok bad)
-        (if (gate (car ys))
-          (loop (cdr ys) (+ ok 1) bad)
-          (loop (cdr ys) ok (+ bad 1)))))))
-
-(define (fail-count)
-  (car (cdr (run-batch))))
-
-(define (over-budget?)
-  (> (fail-count) MAX-FAILS))
-
-(define (within-budget?)
-  (<= (fail-count) MAX-FAILS))
 
 (display "R0 batch=")
-(display (run-batch))
+(display (aether:gate-run-batch))
 (display " fails=")
-(display (fail-count))
+(display (aether:gate-fail-count))
 (display " over-budget?=")
-(display (over-budget?))
+(display (not (aether:gate-within-budget?)))
 (newline)
 
-(if (not installed)
+(define r1 #f)
+(define r2 #f)
+(define r3 #f)
+
+; R1: over budget → widen
+(set! r1
+  (aether:loop-once
+    (lambda () (aether:gate-fail-count))
+    (lambda () (not (aether:gate-within-budget?)))
+    "gate"
+    aether:gate-body-widen
+    "r1-widen-gate"
+    aether:gate-within-budget?))
+(display "R1 ")
+(write r1)
+(newline)
+(display "R1 batch=")
+(display (aether:gate-run-batch))
+(newline)
+
+; R2: skip
+(set! r2
+  (aether:loop-once
+    (lambda () (aether:gate-fail-count))
+    (lambda () (not (aether:gate-within-budget?)))
+    "gate"
+    aether:gate-body-widen
+    "r2-noop"
+    aether:gate-within-budget?))
+(display "R2 ")
+(write r2)
+(newline)
+
+; R3: bad deny → rollback
+(set! r3
+  (aether:loop-once
+    (lambda () (aether:gate-fail-count))
+    (lambda () #t)
+    "gate"
+    aether:gate-body-deny
+    "r3-deny-all"
+    aether:gate-within-budget?))
+(display "R3 ")
+(write r3)
+(newline)
+(display "R3 batch=")
+(display (aether:gate-run-batch))
+(newline)
+
+(display "stats ")
+(write (aether:stats-alist))
+(newline)
+
+(define all-ok
+  (and installed
+       (eq? (aether:alist-ref ":decision" r1 #f) 'commit)
+       (eq? (aether:alist-ref ":decision" r2 #f) 'skip)
+       (eq? (aether:alist-ref ":decision" r3 #f) 'rollback)
+       (aether:gate-within-budget?)
+       (= (aether:gate-fail-count) 4)
+       (= (aether:stats-ref "commits") 1)
+       (>= (aether:stats-ref "rollbacks") 1)
+       (>= (aether:stats-ref "decide-skip") 1)
+       (= (aether:stats-ref "rounds") 3)
+       (aether:safety-ok?)
+       (= (aether:stats-ref "escapes") 0)))
+
+(if all-ok
   (begin
-    (display "FAIL: install")
+    (display "PASS: business-signal loop (fail-rate decide + commit/skip/rollback)")
+    (newline)
+    (display "escapes: 0 in evolvable core (pure Aura + aether-min)")
+    (newline)
+    (display "RESULT pass example=02-business-signal escapes=0 commits=1 rollbacks=1")
     (newline))
   (begin
-    ; R1: over budget → widen gate
-    (define r1
-      (aether:loop-once
-        (lambda () (fail-count))
-        over-budget?
-        "gate"
-        "(lambda (x) (< x 7))"
-        "r1-widen-gate"
-        within-budget?))
-
-    (display "R1 ")
-    (write r1)
+    (display "FAIL")
     (newline)
-    (display "R1 batch=")
-    (display (run-batch))
-    (newline)
-
-    ; R2: skip
-    (define r2
-      (aether:loop-once
-        (lambda () (fail-count))
-        over-budget?
-        "gate"
-        "(lambda (x) (< x 7))"
-        "r2-noop"
-        within-budget?))
-
-    (display "R2 ")
-    (write r2)
-    (newline)
-
-    ; R3: bad deny-all → rollback
-    (define r3
-      (aether:loop-once
-        (lambda () (fail-count))
-        (lambda () #t)
-        "gate"
-        "(lambda (x) #f)"
-        "r3-deny-all"
-        within-budget?))
-
-    (display "R3 ")
-    (write r3)
-    (newline)
-    (display "R3 batch=")
-    (display (run-batch))
-    (newline)
-
-    (display "stats ")
-    (write (aether:stats-alist))
-    (newline)
-
-    (define all-ok
-      (and (eq? (aether:alist-ref ":decision" r1 #f) 'commit)
-           (eq? (aether:alist-ref ":decision" r2 #f) 'skip)
-           (eq? (aether:alist-ref ":decision" r3 #f) 'rollback)
-           (within-budget?)
-           (= (fail-count) 4)
-           (= (aether:stats-ref "commits") 1)
-           (>= (aether:stats-ref "rollbacks") 1)
-           (>= (aether:stats-ref "decide-skip") 1)
-           (= (aether:stats-ref "rounds") 3)
-           (aether:safety-ok?)
-           (= (aether:stats-ref "escapes") 0)))
-
-    (if all-ok
-      (begin
-        (display "PASS: business-signal loop (fail-rate decide + commit/skip/rollback)")
-        (newline)
-        (display "escapes: 0 in evolvable core (pure Aura + aether-min)")
-        (newline))
-      (begin
-        (display "FAIL")
-        (newline)
-        (display (list (aether:alist-ref ":decision" r1 #f)
-                       (aether:alist-ref ":decision" r2 #f)
-                       (aether:alist-ref ":decision" r3 #f)
-                       (fail-count)
-                       (aether:stats-alist)))
-        (newline)))))
+    (display "RESULT fail example=02-business-signal")
+    (newline)))
