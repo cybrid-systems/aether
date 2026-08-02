@@ -136,15 +136,14 @@ aether/
 ├── lib/
 │   └── aether-min.aura      # Staged reusable A+B+F helpers (experimental)
 ├── examples/
-│   └── 01-single-loop/      # Runnable denseness probe (canonical)
-│       ├── main.aura
-│       └── README.md
+│   ├── 01-single-loop/      # O→D→M→V→R baseline (score rebind)
+│   └── 02-business-signal/  # Decide from fail-rate / budget
 └── notes/
     ├── escape-log.md        # Every necessary escape
     └── denseness-report.md  # (planned) Aggregated θ, ρ, conclusions
 ```
 
-Planned later: `lib/{loop,mutate-policy,orch,adapt,boundary,measure}/` and examples 02–05.
+Planned later: `lib/{loop,mutate-policy,orch,adapt,boundary,measure}/` and examples 03–05.
 
 ## Span order (execution path)
 
@@ -175,16 +174,18 @@ Apache License 2.0 (same as Aura)
 
 ## Status
 
-Scope locked. **Example 01** runs on modular `lib/aether-min.aura`:
+Scope locked. Phase 1 examples on modular `lib/aether-min.aura`:
 
 ```bash
 ./scripts/run-aura.sh examples/01-single-loop/main.aura
-# PASS: O→D→M→V→R closed loop (commit + skip + rollback)
+./scripts/run-aura.sh examples/02-business-signal/main.aura
 ```
 
-- Observe wrong self-logic → safe rebind → business verify → commit  
-- Skip when already correct  
-- Bad proposal → verify fail → snapshot rollback  
-- Zero escapes in the evolvable core  
+| Example | Proves |
+|---------|--------|
+| **01** | O→D→M→V→R baseline (commit / skip / rollback) |
+| **02** | Decide from **business fail-rate**, not only engine counters |
 
-Requires Aura host with module/mutation fixes (#2566–#2570).
+Zero escapes in the evolvable core. Requires Aura host fixes #2566–#2570.
+
+**Next:** example 03 (researcher + executor; LLM only on propose edge).

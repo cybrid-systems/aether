@@ -103,15 +103,18 @@ notes/denseness-report.md
 
 ### Phase 1
 
-**Example 01 — done** (`examples/01-single-loop` + `lib/aether-min.aura`)
+**Examples 01–02 — done**
 
-Modular O→D→M→V→R: commit / skip / rollback, hash stats, symbol decisions,
-`(require "aether-min" all:)`. Host prerequisites: Aura #2566–#2570.
+- `01-single-loop` — O→D→M→V→R baseline  
+- `02-business-signal` — Decide from domain fail-count / budget  
+- Shared surface: `lib/aether-min.aura`  
+
+Host prerequisites: Aura #2566–#2570.
 
 **Next**
 
-- **02** — business-signal-driven decisions (not only engine counters)  
 - **03** — researcher + executor; if LLM is used, confine \(E\) to propose edge  
+- Optional: split `aether-min` into `lib/{loop,mutate-policy,measure}/`  
 
 Phase 1 success bar: majority of evolvable core in pure Aura; full observe/rollback;
 escape log honest; business-logic escape rate aimed &lt; 10–15%.
