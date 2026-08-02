@@ -54,13 +54,40 @@ jobs:
               || pip install -r requirements-dev.txt
           fi
 
-      - name: Build Aura binary
+      - name: Build Aura binary (target aura only)
         working-directory: aura
+        env:
+          # Match Aura CI job sizing; image ships Ninja + CMake 4.3+.
+          CMAKE_BUILD_PARALLEL_LEVEL: "4"
         run: |
           set -euo pipefail
-          python3 build.py build
+          # build.py build also compiles test_ir/test_concurrent; denseness only
+          # needs the aura CLI binary + shared modules next to it.
+          python3 - <<'PY'
+          import os, subprocess, sys
+          from pathlib import Path
+          root = Path(".").resolve()
+          build = root / "build"
+          build.mkdir(parents=True, exist_ok=True)
+          nproc = os.environ.get("CMAKE_BUILD_PARALLEL_LEVEL", str(os.cpu_count() or 4))
+          conf = [
+              "cmake", "-B", str(build), "-G", "Ninja", "-Wno-dev",
+              "-DCMAKE_BUILD_TYPE=Release",
+              "-DCMAKE_EXPERIMENTAL_CXX_IMPORT_STD=f35a9ac6-8463-4d38-8eec-5d6008153e7d",
+          ]
+          print("+", " ".join(conf), flush=True)
+          r = subprocess.call(conf, cwd=root)
+          if r != 0:
+              sys.exit(r)
+          cmd = ["cmake", "--build", str(build), "--target", "aura", "-j", nproc]
+          print("+", " ".join(cmd), flush=True)
+          r = subprocess.call(cmd, cwd=root)
+          if r != 0:
+              print("retry aura target once", flush=True)
+              r = subprocess.call(cmd, cwd=root)
+          sys.exit(r)
+          PY
           test -x build/aura
-          # Shared modules (e.g. libaura-reflect.so) live next to the binary.
           ls -la build/aura build/*.so 2>/dev/null || true
 
       - name: Run denseness report
