@@ -25,8 +25,29 @@ WINDOW_HOURS="${AETHER_OVERNIGHT_WINDOW_HOURS:-8}"
 PEAK_ONLY="${AETHER_OVERNIGHT_PEAK_ONLY:-0}"
 MAX_PROPOSES="${AETHER_OVERNIGHT_MAX_PROPOSES:-80}"
 SLEEP_SEC="${AETHER_OVERNIGHT_SLEEP_SEC:-20}"
+SLEEP_MIN="${AETHER_OVERNIGHT_SLEEP_MIN:-8}"
+SLEEP_MAX="${AETHER_OVERNIGHT_SLEEP_MAX:-120}"
 MAX_MINUTES="${AETHER_OVERNIGHT_MAX_MINUTES:-}"
-export AETHER_OVERNIGHT_AGENTS="${AETHER_OVERNIGHT_AGENTS:-6}"
+
+# Adaptive multi-agent pressure: ramp until LLM fails, then back off and sustain.
+AGENTS_MIN="${AETHER_OVERNIGHT_AGENTS_MIN:-2}"
+AGENTS_MAX="${AETHER_OVERNIGHT_AGENTS_MAX:-24}"
+AGENTS_STEP_UP="${AETHER_OVERNIGHT_AGENTS_STEP_UP:-2}"
+AGENTS_STEP_DOWN="${AETHER_OVERNIGHT_AGENTS_STEP_DOWN:-4}"
+ADAPTIVE="${AETHER_OVERNIGHT_ADAPTIVE:-1}"
+if [[ "$ADAPTIVE" == "0" || "$ADAPTIVE" == "false" ]]; then
+  ADAPTIVE=0
+  AGENTS_CUR="${AETHER_OVERNIGHT_AGENTS:-6}"
+else
+  ADAPTIVE=1
+  AGENTS_CUR="${AETHER_OVERNIGHT_AGENTS:-$AGENTS_MIN}"
+fi
+if (( AGENTS_CUR < AGENTS_MIN )); then AGENTS_CUR=$AGENTS_MIN; fi
+if (( AGENTS_CUR > AGENTS_MAX )); then AGENTS_CUR=$AGENTS_MAX; fi
+export AETHER_OVERNIGHT_AGENTS="$AGENTS_CUR"
+PEAK_AGENTS_SEEN=$AGENTS_CUR
+BACKOFF_N=0
+RAMP_N=0
 
 DRIVER="${AETHER_OVERNIGHT_DRIVER:-examples/22-overnight-mutate/main.aura}"
 ANOMALY_LOG="${AETHER_ANOMALY_LOG:-$ROOT/notes/aura-anomaly-log.md}"
@@ -147,8 +168,8 @@ pass_n=0
 fail_n=0
 crash_n=0
 quota_n=0
-LIVE_CALLS_PER_INV=36
-est_live_calls_max=$((MAX_PROPOSES * LIVE_CALLS_PER_INV))
+live_calls_per_inv() { echo $(( AGENTS_CUR * 6 )); }
+est_live_calls_max=$((MAX_PROPOSES * AGENTS_MAX * 6))
 remain_to_deadline=$(( (deadline - start_ts) / 60 ))
 now_local=$(date '+%Y-%m-%d %H:%M:%S %Z')
 next_reset_ts=$(next_midnight_ts)
@@ -191,10 +212,11 @@ OVERNIGHT SESSION
   schedule:       $SCHEDULE  TZ=$TZ  window=${RESET_HOUR}:00–$((RESET_HOUR + WINDOW_HOURS)):00
   reset_note:     $reset_note
   hard_stop:      $stop_reason  (~${remain_to_deadline}m)
-  max_invocations:$MAX_PROPOSES  sleep=${SLEEP_SEC}s  peak_only=$PEAK_ONLY  agents=$AETHER_OVERNIGHT_AGENTS
+  max_invocations:$MAX_PROPOSES  sleep=${SLEEP_SEC}s (${SLEEP_MIN}–${SLEEP_MAX}) peak_only=$PEAK_ONLY
+  adaptive:       $ADAPTIVE  agents=${AGENTS_CUR} (min=$AGENTS_MIN max=$AGENTS_MAX step_up=$AGENTS_STEP_UP step_down=$AGENTS_STEP_DOWN)
   mode:           $AETHER_LLM_PROPOSE
-  pressure:       6 agents × 6 waves ≈ ${LIVE_CALLS_PER_INV} LLM calls/inv (live)
-  est_live_max:   $est_live_calls_max
+  pressure:       stage ramp agents until LLM fail → backoff → sustain
+  est_live_max:   ~$est_live_calls_max (if always at max agents)
   logs:
     run_log:      $RUN_LOG
     anomaly_log:  $ANOMALY_LOG
@@ -316,9 +338,13 @@ while true; do
   inv_file="$INV_DIR/${inv_tag}.log"
   inv_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
+  export AETHER_OVERNIGHT_AGENTS="$AGENTS_CUR"
+  est_calls=$(live_calls_per_inv)
+
   {
     echo "======== INVOCATION $invocations / $MAX_PROPOSES  session=$SESSION_ID  utc=$inv_ts  ~${rem_m}m left ========"
-    echo "AETHER_SHA=$AETHER_SHA AURA_SHA=$AURA_SHA MODE=$AETHER_LLM_PROPOSE AGENTS=$AETHER_OVERNIGHT_AGENTS"
+    echo "PRESSURE agents=$AGENTS_CUR sleep=${SLEEP_SEC}s adaptive=$ADAPTIVE peak_seen=$PEAK_AGENTS_SEEN est_llm_calls≈$est_calls"
+    echo "AETHER_SHA=$AETHER_SHA AURA_SHA=$AURA_SHA MODE=$AETHER_LLM_PROPOSE"
   } | tee -a "$RUN_LOG"
 
   set +e
@@ -332,6 +358,9 @@ while true; do
     echo "session_id=$SESSION_ID"
     echo "utc=$inv_ts"
     echo "rc=$rc"
+    echo "agents=$AGENTS_CUR"
+    echo "sleep_sec=$SLEEP_SEC"
+    echo "pressure_peak_seen=$PEAK_AGENTS_SEEN"
     echo "aether_sha=$AETHER_SHA"
     echo "aura_sha=$AURA_SHA"
     echo "mode=$AETHER_LLM_PROPOSE"
@@ -349,40 +378,99 @@ while true; do
   error_lines=$(echo "$out" | grep -iE 'error:|internal error|unbound|panic|segfault|FATAL' | tail -n 15 || true)
   host_hints=$(classify_host_hints "$out")
 
+  # LLM / provider pressure signals (even if driver PASS with soft fallback)
+  llm_fail=0
+  if echo "$out" | grep -qiE 'rate-limit|429|quota|insufficient|llm-parse-fallback|llm-nokey|empty'; then
+    llm_fail=1
+  fi
+  # Many live escapes expected; if live mode and escapes much lower than agents*5, soft fail
+  if [[ "$AETHER_LLM_PROPOSE" == "live" ]]; then
+    esc_n=$(echo "$result_line" | grep -oE 'escapes=[0-9]+' | head -1 | cut -d= -f2 || true)
+    if [[ -n "${esc_n:-}" && "$esc_n" -lt $(( AGENTS_CUR * 2 )) ]]; then
+      llm_fail=1
+    fi
+  fi
+
   status="unknown"
+  pressure_action="hold"
   if (( rc != 0 )); then
     status="crash"
     crash_n=$((crash_n + 1))
     excerpt=$(printf '%s\n%s\n%s' "$error_lines" "$wave_lines" "$(echo "$out" | tail -n 40)")
     append_anomaly "runner-nonzero-exit" "crash" "$invocations" "$inv_file" \
-      "run-aura exit rc=$rc (host crash / panic / nonzero). Full log: \`$inv_file\`." \
+      "run-aura exit rc=$rc (host crash / panic / nonzero). agents=$AGENTS_CUR. Full log: \`$inv_file\`." \
       "$excerpt" "$result_line" "$host_hints"
     echo "WARN: CRASH rc=$rc → anomaly logged (inv log: $inv_file)" | tee -a "$RUN_LOG"
+    pressure_action="backoff_hard"
   elif echo "$out" | grep -q '^PASS:'; then
     status="pass"
     pass_n=$((pass_n + 1))
-    echo "OK: PASS inv=$invocations result=${result_line:-"(no RESULT)"}" | tee -a "$RUN_LOG"
+    echo "OK: PASS inv=$invocations agents=$AGENTS_CUR result=${result_line:-"(no RESULT)"}" | tee -a "$RUN_LOG"
+    if (( llm_fail )); then
+      pressure_action="backoff_llm"
+    else
+      pressure_action="ramp"
+    fi
   else
     status="fail"
     fail_n=$((fail_n + 1))
     excerpt=$(printf '%s\n%s\n%s' "$error_lines" "$wave_lines" "$(echo "$out" | tail -n 50)")
     append_anomaly "driver-FAIL" "fail" "$invocations" "$inv_file" \
-      "Driver finished without PASS line (rc=0). RESULT=\`${result_line:-none}\`. Full log: \`$inv_file\`." \
+      "Driver finished without PASS line (rc=0). agents=$AGENTS_CUR RESULT=\`${result_line:-none}\`. Full log: \`$inv_file\`." \
       "$excerpt" "$result_line" "$host_hints"
     echo "WARN: FAIL (no PASS) → anomaly logged (inv log: $inv_file)" | tee -a "$RUN_LOG"
+    pressure_action="backoff"
   fi
 
-  if echo "$out" | grep -qiE 'rate-limit|429|quota|insufficient'; then
+  if (( llm_fail )); then
     quota_n=$((quota_n + 1))
-    excerpt=$(echo "$out" | grep -iE 'rate-limit|429|quota|insufficient' | tail -n 10)
-    append_anomaly "provider-quota-or-rate-limit" "quota" "$invocations" "$inv_file" \
-      "Provider rate/quota signal in driver output (not denseness core)." \
+    excerpt=$(echo "$out" | grep -iE 'rate-limit|429|quota|insufficient|llm-parse-fallback|llm-nokey|empty' | tail -n 10 || true)
+    if [[ -z "$excerpt" ]]; then excerpt="llm_fail heuristic (low escapes or soft signal)"; fi
+    append_anomaly "provider-or-llm-pressure" "quota" "$invocations" "$inv_file" \
+      "LLM/provider pressure at agents=$AGENTS_CUR (rate-limit/quota/fallback/low escapes). Backing off." \
       "$excerpt" "$result_line" "$(classify_host_hints "$out")"
-    echo "WARN: provider quota/rate signal (inv=$invocations)" | tee -a "$RUN_LOG"
+    echo "WARN: LLM pressure signal (inv=$invocations agents=$AGENTS_CUR)" | tee -a "$RUN_LOG"
+    if [[ "$pressure_action" == "ramp" || "$pressure_action" == "hold" ]]; then
+      pressure_action="backoff_llm"
+    fi
   fi
 
-  # Machine line for grepping run log
-  echo "INV_STATUS session=$SESSION_ID inv=$invocations status=$status rc=$rc result=${result_line// /_}" | tee -a "$RUN_LOG"
+  # ── adaptive pressure controller ────────────────────────────
+  prev_agents=$AGENTS_CUR
+  prev_sleep=$SLEEP_SEC
+  if [[ "$ADAPTIVE" == "1" ]]; then
+    case "$pressure_action" in
+      ramp)
+        if (( AGENTS_CUR < AGENTS_MAX )); then
+          AGENTS_CUR=$(( AGENTS_CUR + AGENTS_STEP_UP ))
+          if (( AGENTS_CUR > AGENTS_MAX )); then AGENTS_CUR=$AGENTS_MAX; fi
+          RAMP_N=$((RAMP_N + 1))
+        fi
+        # gently speed up when healthy
+        if (( SLEEP_SEC > SLEEP_MIN )); then
+          SLEEP_SEC=$(( SLEEP_SEC - 2 ))
+          if (( SLEEP_SEC < SLEEP_MIN )); then SLEEP_SEC=$SLEEP_MIN; fi
+        fi
+        ;;
+      backoff|backoff_llm|backoff_hard)
+        step=$AGENTS_STEP_DOWN
+        if [[ "$pressure_action" == "backoff_hard" ]]; then
+          step=$(( AGENTS_STEP_DOWN * 2 ))
+        fi
+        AGENTS_CUR=$(( AGENTS_CUR - step ))
+        if (( AGENTS_CUR < AGENTS_MIN )); then AGENTS_CUR=$AGENTS_MIN; fi
+        SLEEP_SEC=$(( SLEEP_SEC + 15 ))
+        if (( SLEEP_SEC > SLEEP_MAX )); then SLEEP_SEC=$SLEEP_MAX; fi
+        BACKOFF_N=$((BACKOFF_N + 1))
+        ;;
+      hold) ;;
+    esac
+    if (( AGENTS_CUR > PEAK_AGENTS_SEEN )); then PEAK_AGENTS_SEEN=$AGENTS_CUR; fi
+    export AETHER_OVERNIGHT_AGENTS="$AGENTS_CUR"
+  fi
+
+  echo "PRESSURE_NEXT action=$pressure_action agents ${prev_agents}→${AGENTS_CUR} sleep ${prev_sleep}→${SLEEP_SEC}s peak_seen=$PEAK_AGENTS_SEEN" | tee -a "$RUN_LOG"
+  echo "INV_STATUS session=$SESSION_ID inv=$invocations status=$status rc=$rc agents=$prev_agents next_agents=$AGENTS_CUR action=$pressure_action result=${result_line// /_}" | tee -a "$RUN_LOG"
 
   now=$(date +%s)
   if (( invocations < MAX_PROPOSES && now < deadline )); then
@@ -394,7 +482,8 @@ done
 
 end_ts=$(date +%s)
 elapsed=$((end_ts - start_ts))
-est_live=$((invocations * LIVE_CALLS_PER_INV))
+# rough: average agents ~ (min+peak)/2 * 6 waves * invs
+est_live=$(( invocations * (AGENTS_MIN + PEAK_AGENTS_SEEN) * 3 ))
 
 {
   echo
@@ -406,7 +495,11 @@ est_live=$((invocations * LIVE_CALLS_PER_INV))
   echo "| PASS | $pass_n |"
   echo "| FAIL | $fail_n |"
   echo "| CRASH | $crash_n |"
-  echo "| Quota signals | $quota_n |"
+  echo "| LLM/quota pressure | $quota_n |"
+  echo "| Pressure ramps | $RAMP_N |"
+  echo "| Pressure backoffs | $BACKOFF_N |"
+  echo "| Peak agents | $PEAK_AGENTS_SEEN (min=$AGENTS_MIN max=$AGENTS_MAX) |"
+  echo "| Final agents / sleep | $AGENTS_CUR / ${SLEEP_SEC}s |"
   echo "| Elapsed_sec | $elapsed |"
   echo "| Est live LLM calls | ~$est_live |"
   echo "| Mode | $AETHER_LLM_PROPOSE |"
@@ -427,12 +520,13 @@ est_live=$((invocations * LIVE_CALLS_PER_INV))
   echo
   echo "================================================================================"
   echo "OVERNIGHT DONE session=$SESSION_ID"
-  echo "  inv=$invocations pass=$pass_n fail=$fail_n crash=$crash_n quota=$quota_n elapsed_sec=$elapsed"
+  echo "  inv=$invocations pass=$pass_n fail=$fail_n crash=$crash_n llm_pressure=$quota_n elapsed_sec=$elapsed"
+  echo "  pressure peak_agents=$PEAK_AGENTS_SEEN ramps=$RAMP_N backoffs=$BACKOFF_N final_agents=$AGENTS_CUR sleep=${SLEEP_SEC}s"
   echo "  est_live_calls≈$est_live"
   echo "  run_log=$RUN_LOG"
   echo "  anomaly_log=$ANOMALY_LOG"
   echo "  inv_dir=$INV_DIR"
-  echo "  tip: grep INV_STATUS $RUN_LOG | tail"
+  echo "  tip: grep -E 'PRESSURE|INV_STATUS' $RUN_LOG | tail -30"
   echo "  tip: ls $INV_DIR | tail"
   echo "================================================================================"
 } | tee -a "$RUN_LOG"

@@ -4,20 +4,31 @@
 sandbox propose fanout**. Mutates denseness domain `gate` only (not mainline
 `lib/aether-*`). Long runs: `scripts/overnight-mutate.sh`.
 
-## Pressure shape (why this is denser than a single LLM call)
+## Pressure shape (adaptive multi-agent)
 
-Each driver invocation:
+Each driver invocation (agent count **N** from env / harness):
 
 ```
-6 agents ──aether:fanout──► (parallel-yield preferred) ──► pure-Aura arbiter
-                                                          ──► single executor
+N agents ──aether:fanout──► (parallel-yield when live) ──► pure-Aura arbiter
+                                                         ──► single executor
 × 6 waves  (+ forced poison rollback)
+≈ N×6 short llm:chat when live
 ```
 
-| Mode | Propose pressure per invocation |
-|------|----------------------------------|
-| **live** | ≈ **36** short `llm:chat` one-shots (6 agents × 6 waves) |
-| **stub/offline** | same topology; stub markers meter `escapes` (no network) |
+**Harness adaptive loop** (default):
+
+```
+start agents=2
+  PASS + healthy LLM  → agents += 2 (up to 24), sleep slightly ↓
+  LLM fail / 429 / quota / low escapes / FAIL / CRASH
+                      → agents -= 4 (floor 2), sleep ↑
+  keep pressing until clock stop (next 08:00)
+```
+
+| Mode | Propose pressure |
+|------|------------------|
+| **live** | ramps e.g. 2→4→…→peak then back off and sustain |
+| **stub/offline** | same ramp topology (suite default N=6 fixed per single run) |
 
 Invariants (unchanged denseness shape):
 
@@ -53,12 +64,16 @@ now ──► 00:00 reset ──► 08:00 STOP
 | `AETHER_OVERNIGHT_TZ` | `Asia/Shanghai` | clock TZ |
 | `AETHER_OVERNIGHT_WINDOW_HOURS` | `8` | stop at 08:00 |
 | `AETHER_OVERNIGHT_MAX_PROPOSES` | `80` | max driver restarts |
-| `AETHER_OVERNIGHT_SLEEP_SEC` | `20` | cooldown between invocations |
-| `AETHER_OVERNIGHT_AGENTS` | `6` | (reserved; driver uses 6-agent waves) |
+| `AETHER_OVERNIGHT_SLEEP_SEC` | `20` | base cooldown (adaptive) |
+| `AETHER_OVERNIGHT_ADAPTIVE` | `1` | `0` = freeze agent count |
+| `AETHER_OVERNIGHT_AGENTS` | start | initial N (default min=2 when adaptive) |
+| `AETHER_OVERNIGHT_AGENTS_MIN` | `2` | floor after backoff |
+| `AETHER_OVERNIGHT_AGENTS_MAX` | `24` | ceiling when ramping |
+| `AETHER_OVERNIGHT_AGENTS_STEP_UP` | `2` | +N on healthy PASS |
+| `AETHER_OVERNIGHT_AGENTS_STEP_DOWN` | `4` | −N on LLM fail |
 | `AETHER_LLM_PROPOSE` | live if key | `live` / `stub` / `rule` |
 
-Rough live upper bound overnight: `80 × 36 ≈ 2880` short one-shots if every
-invocation is live and the clock allows — usually less (latency + early stop).
+Log lines: `PRESSURE agents=…` / `PRESSURE_NEXT action=ramp|backoff_llm|…`.
 
 ### Context (1M)
 

@@ -1,16 +1,11 @@
 ; examples/22-overnight-mutate/main.aura
 ; Phase 5 / issue #4: multi-agent sandbox fanout stress (overnight driver).
 ;
-; Per invocation:
-;   - 6 concurrent propose agents via aether:fanout (parallel-yield preferred)
-;   - pure-Aura arbitrate → single executor
-;   - 6 fanout waves for propose-edge pressure (LLM when live)
-;   - forced poison rollback path
+; AETHER_OVERNIGHT_AGENTS = N (default 6; harness ramps 2→max then backoffs).
+; Live: aether:fanout (parallel preferred). Offline: fanout-with-yield.
+; Single mutator; poison rollback always exercised.
 ;
-; Env: AETHER_LLM_PROPOSE=stub|live|rule
-;      AETHER_OVERNIGHT_AGENTS=6|8  (default 6; 8 only when live pressure)
-;
-; Run: ./scripts/run-aura.sh examples/22-overnight-mutate/main.aura
+; Run: AETHER_OVERNIGHT_AGENTS=12 ./scripts/run-aura.sh examples/22-overnight-mutate/main.aura
 ; Overnight: ./scripts/overnight-mutate.sh
 
 (require "std/list" all:)
@@ -26,12 +21,12 @@
 (display "LOG_META example=22-overnight-mutate role=overnight-driver denseness=phase5")
 (newline)
 
-; Pre-allocate all cells before install/rebind.
 (define pm (aether:propose-mode))
 (define key (getenv "LLM_API_KEY"))
 (define use-live #f)
 (define agents-env (getenv "AETHER_OVERNIGHT_AGENTS"))
 (define n-agents 6)
+(define n-parsed #f)
 (define installed #f)
 (define commits 0)
 (define skips 0)
@@ -57,12 +52,56 @@
        (string? key)
        (> (string-length key) 0)))
 
-(if (and (string? agents-env) (equal? agents-env "8"))
-  (set! n-agents 8)
+(if (and (string? agents-env) (> (string-length agents-env) 0))
+  (begin
+    (set! n-parsed (string->number agents-env))
+    (if (and (number? n-parsed) (>= n-parsed 1) (<= n-parsed 32))
+      (set! n-agents n-parsed)
+      #f))
   #f)
-(if (and (string? agents-env) (equal? agents-env "4"))
-  (set! n-agents 4)
-  #f)
+
+; Builders — call only after install (host closure validity).
+(define (repeat-live n)
+  (if (or (not (number? n)) (<= n 0))
+    (quote ())
+    (cons (lambda (f)
+            (aether:stats-bump! "escapes")
+            (aether:propose f 4 "auto"))
+          (repeat-live (- n 1)))))
+
+(define (repeat-stub n)
+  (if (or (not (number? n)) (<= n 0))
+    (quote ())
+    (cons (lambda (f)
+            (aether:stats-bump! "escapes")
+            (if (> f 4)
+              (list "mutate" "gate" "(lambda (x) (< x 7))" "stub-widen" "llm-stub")
+              (if (> f 3)
+                (list "mutate" "gate" "(lambda (x) (< x 7))" "stub-eager" "llm-stub")
+                (list "skip" "gate" "" "stub-skip" "llm-stub"))))
+          (repeat-stub (- n 1)))))
+
+; Append one rogue every 3rd agent for arbiter filter stress (stub only).
+(define (repeat-stub-mix n i)
+  (if (or (not (number? n)) (<= n 0))
+    (quote ())
+    (cons
+      (if (= (modulo i 3) 2)
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "mutate" "gate" "(lambda (x) #f)" "stub-rogue" "llm-stub-rogue"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (if (> f 4)
+            (list "mutate" "gate" "(lambda (x) (< x 7))" "stub-widen" "llm-stub")
+            (list "skip" "gate" "" "stub-skip" "llm-stub"))))
+      (repeat-stub-mix (- n 1) (+ i 1)))))
+
+(define (run-fanout-live n)
+  (aether:fanout (repeat-live n) (aether:gate-fail-count)))
+
+(define (run-fanout-stub n)
+  (aether:fanout-with-yield (repeat-stub-mix n 0) (aether:gate-fail-count)))
 
 (display "n-agents=")
 (display n-agents)
@@ -88,50 +127,13 @@
 (display (aether:gate-fail-count))
 (newline)
 
-; ════════════════════════════════════════════════════════════
-; Wave 0 — over budget: 6-agent fanout (live=LLM each; stub=mixed)
-; ════════════════════════════════════════════════════════════
+; ── macro-style top-level wave (no helper set! — host residual) ──
+; Wave 0 stress
 (set! fails-now (aether:gate-fail-count))
 (set! esc0 (aether:stats-ref "escapes"))
 (if use-live
-  (set! fan
-    (aether:fanout
-      (list
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto")))
-      fails-now))
-  (set! fan
-    (aether:fanout-with-yield
-      (list
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (if (> f 4)
-            (list "mutate" "gate" "(lambda (x) (< x 7))" "w0-cons" "llm-stub-A")
-            (list "skip" "gate" "" "w0-cons-s" "llm-stub-A")))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (if (> f 3)
-            (list "mutate" "gate" "(lambda (x) (< x 7))" "w0-agg" "llm-stub-B")
-            (list "skip" "gate" "" "w0-agg-s" "llm-stub-B")))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (if (> f 2)
-            (list "mutate" "gate" "(lambda (x) (< x 7))" "w0-eager" "llm-stub-C")
-            (list "skip" "gate" "" "w0-eager-s" "llm-stub-C")))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "mutate" "gate" "(lambda (x) (< x 7))" "w0-force" "llm-stub-D"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "skip" "gate" "" "w0-peer" "llm-stub-E"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "mutate" "gate" "(lambda (x) #f)" "w0-rogue" "llm-stub-rogue")))
-      fails-now)))
+  (set! fan (run-fanout-live n-agents))
+  (set! fan (run-fanout-stub n-agents)))
 (set! mode (car fan))
 (set! props (car (cdr fan)))
 (set! yields (car (cdr (cdr fan))))
@@ -151,12 +153,10 @@
     (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
       (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
         (set! anomalies (+ anomalies 1))))))
-(display "W0 mode=")
+(display "W0 kind=stress mode=")
 (display mode)
 (display " n=")
 (display (length props))
-(display " yields=")
-(display yields)
 (display " esc+")
 (display (- esc1 esc0))
 (display " decision=")
@@ -164,7 +164,9 @@
 (display " fails=")
 (display (aether:gate-fail-count))
 (newline)
-(display "WAVE id=0 kind=stress mode=")
+(display "WAVE id=0 kind=stress agents=")
+(display n-agents)
+(display " mode=")
 (display mode)
 (display " n=")
 (display (length props))
@@ -180,47 +182,12 @@
 (write picked)
 (newline)
 
-
-; ════════════════════════════════════════════════════════════
-; Wave 1 — healthy multi-agent (skip-biased; live still N LLM calls)
-; ════════════════════════════════════════════════════════════
+; Wave 1 healthy
 (set! fails-now (aether:gate-fail-count))
 (set! esc0 (aether:stats-ref "escapes"))
 (if use-live
-  (set! fan
-    (aether:fanout
-      (list
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto")))
-      fails-now))
-  (set! fan
-    (aether:fanout-with-yield
-      (list
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "skip" "gate" "" "w1-a" "llm-stub-A"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "skip" "gate" "" "w1-b" "llm-stub-B"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "skip" "gate" "" "w1-c" "llm-stub-C"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (if (> f 4)
-            (list "mutate" "gate" "(lambda (x) (< x 7))" "w1-d" "llm-stub-D")
-            (list "skip" "gate" "" "w1-d-s" "llm-stub-D")))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "skip" "gate" "" "w1-e" "llm-stub-E"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "mutate" "gate" "(lambda (x) #f)" "w1-rogue" "llm-stub-rogue")))
-      fails-now)))
+  (set! fan (run-fanout-live n-agents))
+  (set! fan (run-fanout-stub n-agents)))
 (set! mode (car fan))
 (set! props (car (cdr fan)))
 (set! yields (car (cdr (cdr fan))))
@@ -240,16 +207,9 @@
     (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
       (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
         (set! anomalies (+ anomalies 1))))))
-(display "W1 mode=")
-(display mode)
-(display " n=")
-(display (length props))
-(display " esc+")
-(display (- esc1 esc0))
-(display " decision=")
-(display dec)
-(newline)
-(display "WAVE id=1 kind=healthy mode=")
+(display "WAVE id=1 kind=healthy agents=")
+(display n-agents)
+(display " mode=")
 (display mode)
 (display " n=")
 (display (length props))
@@ -263,49 +223,12 @@
 (write picked)
 (newline)
 
-
-; ════════════════════════════════════════════════════════════
-; Wave 2 — second concurrent stress wave
-; ════════════════════════════════════════════════════════════
+; Wave 2 stress
 (set! fails-now (aether:gate-fail-count))
 (set! esc0 (aether:stats-ref "escapes"))
 (if use-live
-  (set! fan
-    (aether:fanout
-      (list
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto")))
-      fails-now))
-  (set! fan
-    (aether:fanout-with-yield
-      (list
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (if (> f 4)
-            (list "mutate" "gate" "(lambda (x) (< x 7))" "w2-a" "llm-stub-A")
-            (list "skip" "gate" "" "w2-a-s" "llm-stub-A")))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (if (> f 3)
-            (list "mutate" "gate" "(lambda (x) (< x 7))" "w2-b" "llm-stub-B")
-            (list "skip" "gate" "" "w2-b-s" "llm-stub-B")))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "mutate" "gate" "(lambda (x) (< x 7))" "w2-c" "llm-stub-C"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "skip" "gate" "" "w2-d" "llm-stub-D"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "skip" "gate" "" "w2-e" "llm-stub-E"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "mutate" "gate" "(lambda (x) #f)" "w2-rogue" "llm-stub-rogue")))
-      fails-now)))
+  (set! fan (run-fanout-live n-agents))
+  (set! fan (run-fanout-stub n-agents)))
 (set! mode (car fan))
 (set! props (car (cdr fan)))
 (set! yields (car (cdr (cdr fan))))
@@ -325,16 +248,9 @@
     (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
       (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
         (set! anomalies (+ anomalies 1))))))
-(display "W2 mode=")
-(display mode)
-(display " n=")
-(display (length props))
-(display " esc+")
-(display (- esc1 esc0))
-(display " decision=")
-(display dec)
-(newline)
-(display "WAVE id=2 kind=stress mode=")
+(display "WAVE id=2 kind=stress agents=")
+(display n-agents)
+(display " mode=")
 (display mode)
 (display " n=")
 (display (length props))
@@ -348,45 +264,12 @@
 (write picked)
 (newline)
 
-
-; ════════════════════════════════════════════════════════════
-; Wave 3 — poison-mix fanout + forced poison execute (rollback)
-; ════════════════════════════════════════════════════════════
+; Wave 3 poison-mix fanout + force poison rollback
 (set! fails-now (aether:gate-fail-count))
 (set! esc0 (aether:stats-ref "escapes"))
 (if use-live
-  (set! fan
-    (aether:fanout
-      (list
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto")))
-      fails-now))
-  (set! fan
-    (aether:fanout-with-yield
-      (list
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "skip" "gate" "" "w3-a" "llm-stub-A"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "skip" "gate" "" "w3-b" "llm-stub-B"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "mutate" "gate" "(lambda (x) #f)" "w3-rogue1" "llm-stub-rogue"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "mutate" "gate" "(lambda (x) #f)" "w3-rogue2" "llm-stub-rogue"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "skip" "gate" "" "w3-e" "llm-stub-E"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "mutate" "gate" "(lambda (x) (< x 7))" "w3-f" "llm-stub-F")))
-      fails-now)))
+  (set! fan (run-fanout-live n-agents))
+  (set! fan (run-fanout-stub n-agents)))
 (set! mode (car fan))
 (set! props (car (cdr fan)))
 (set! yields (car (cdr (cdr fan))))
@@ -406,10 +289,19 @@
     (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
       (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
         (set! anomalies (+ anomalies 1))))))
-(display "W3 arb decision=")
+(display "WAVE id=3 kind=poison-mix agents=")
+(display n-agents)
+(display " mode=")
+(display mode)
+(display " n=")
+(display (length props))
+(display " esc_delta=")
+(display (- esc1 esc0))
+(display " decision=")
 (display dec)
+(display " picked=")
+(write picked)
 (newline)
-; Force poison rebind to exercise rollback regardless of arbiter pick
 (set! exec-r
   (aether:execute-proposal
     (list "mutate" "gate" "(lambda (x) #f)" "night-poison" "llm-stub-poison")
@@ -422,56 +314,18 @@
     (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
       (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
         (set! anomalies (+ anomalies 1))))))
-(display "W3 poison-force decision=")
-(display dec)
-(display " fails=")
-(display (aether:gate-fail-count))
-(newline)
-(display "WAVE id=3 kind=poison-force decision=")
+(display "WAVE id=3b kind=poison-force decision=")
 (display dec)
 (display " fails=")
 (display (aether:gate-fail-count))
 (newline)
 
-
-; ════════════════════════════════════════════════════════════
-; Wave 4 — heal fanout (multi propose → single mutator restore)
-; ════════════════════════════════════════════════════════════
+; Wave 4 heal
 (set! fails-now (aether:gate-fail-count))
 (set! esc0 (aether:stats-ref "escapes"))
 (if use-live
-  (set! fan
-    (aether:fanout
-      (list
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto")))
-      fails-now))
-  (set! fan
-    (aether:fanout-with-yield
-      (list
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "mutate" "gate" "(lambda (x) (< x 7))" "w4-heal" "llm-stub-A"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "mutate" "gate" "(lambda (x) (< x 7))" "w4-heal2" "llm-stub-B"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "skip" "gate" "" "w4-c" "llm-stub-C"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "skip" "gate" "" "w4-d" "llm-stub-D"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "mutate" "gate" "(lambda (x) #f)" "w4-rogue" "llm-stub-rogue"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "mutate" "gate" "(lambda (x) (< x 7))" "w4-heal3" "llm-stub-F")))
-      fails-now)))
+  (set! fan (run-fanout-live n-agents))
+  (set! fan (run-fanout-stub n-agents)))
 (set! mode (car fan))
 (set! props (car (cdr fan)))
 (set! yields (car (cdr (cdr fan))))
@@ -491,18 +345,9 @@
     (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
       (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
         (set! anomalies (+ anomalies 1))))))
-(display "W4 heal mode=")
-(display mode)
-(display " n=")
-(display (length props))
-(display " esc+")
-(display (- esc1 esc0))
-(display " decision=")
-(display dec)
-(display " fails=")
-(display (aether:gate-fail-count))
-(newline)
-(display "WAVE id=4 kind=heal mode=")
+(display "WAVE id=4 kind=heal agents=")
+(display n-agents)
+(display " mode=")
 (display mode)
 (display " n=")
 (display (length props))
@@ -516,47 +361,12 @@
 (write picked)
 (newline)
 
-
-; ════════════════════════════════════════════════════════════
-; Wave 5 — extra concurrent pressure wave (overnight density)
-; ════════════════════════════════════════════════════════════
+; Wave 5 extra pressure
 (set! fails-now (aether:gate-fail-count))
 (set! esc0 (aether:stats-ref "escapes"))
 (if use-live
-  (set! fan
-    (aether:fanout
-      (list
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
-        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto")))
-      fails-now))
-  (set! fan
-    (aether:fanout-with-yield
-      (list
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "skip" "gate" "" "w5-a" "llm-stub-A"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "skip" "gate" "" "w5-b" "llm-stub-B"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (if (> f 4)
-            (list "mutate" "gate" "(lambda (x) (< x 7))" "w5-c" "llm-stub-C")
-            (list "skip" "gate" "" "w5-c-s" "llm-stub-C")))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "skip" "gate" "" "w5-d" "llm-stub-D"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "skip" "gate" "" "w5-e" "llm-stub-E"))
-        (lambda (f)
-          (aether:stats-bump! "escapes")
-          (list "mutate" "gate" "(lambda (x) #f)" "w5-rogue" "llm-stub-rogue")))
-      fails-now)))
+  (set! fan (run-fanout-live n-agents))
+  (set! fan (run-fanout-stub n-agents)))
 (set! mode (car fan))
 (set! props (car (cdr fan)))
 (set! yields (car (cdr (cdr fan))))
@@ -576,16 +386,9 @@
     (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
       (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
         (set! anomalies (+ anomalies 1))))))
-(display "W5 mode=")
-(display mode)
-(display " n=")
-(display (length props))
-(display " esc+")
-(display (- esc1 esc0))
-(display " decision=")
-(display dec)
-(newline)
-(display "WAVE id=5 kind=healthy mode=")
+(display "WAVE id=5 kind=healthy agents=")
+(display n-agents)
+(display " mode=")
 (display mode)
 (display " n=")
 (display (length props))
@@ -598,7 +401,6 @@
 (display " picked=")
 (write picked)
 (newline)
-
 
 (if (not (aether:safety-ok?))
   (set! anomalies (+ anomalies 1))
@@ -618,6 +420,8 @@
 (display fan-rounds)
 (display " total-props=")
 (display total-props)
+(display " agents=")
+(display n-agents)
 (display " fanout-mode=")
 (display (aether:fanout-mode))
 (newline)
@@ -628,15 +432,14 @@
 (display (aether:gate-run-batch))
 (newline)
 
-; 6 agents × 6 waves = 36 proposals; live ≈ 36 LLM calls / invocation
 (set! all-ok
   (and installed
        (aether:safety-ok?)
        (= anomalies 0)
-       (>= fan-rounds 6)
-       (>= total-props 30)
-       (>= (aether:stats-ref "escapes") 30)
-       (>= (+ commits skips rollbacks refuses) 7)
+       (>= fan-rounds 5)
+       (>= total-props (* n-agents 5))
+       (>= (aether:stats-ref "escapes") (* n-agents 5))
+       (>= (+ commits skips rollbacks refuses) 6)
        (>= rollbacks 1)
        (>= commits 1)))
 
@@ -644,7 +447,9 @@
   (begin
     (display "PASS: overnight multi-agent fanout stress (single mutator; sandbox gate)")
     (newline)
-    (display "RESULT pass example=22-overnight-mutate agents=6 fan_rounds=")
+    (display "RESULT pass example=22-overnight-mutate agents=")
+    (display n-agents)
+    (display " fan_rounds=")
     (display fan-rounds)
     (display " props=")
     (display total-props)
@@ -673,7 +478,9 @@
   (begin
     (display "FAIL: overnight multi-agent fanout stress")
     (newline)
-    (display "RESULT fail example=22-overnight-mutate anomalies=")
+    (display "RESULT fail example=22-overnight-mutate agents=")
+    (display n-agents)
+    (display " anomalies=")
     (display anomalies)
     (display " safety=")
     (display (aether:safety-ok?))
@@ -701,5 +508,5 @@
     (display " stats=")
     (write (aether:stats-alist))
     (newline)
-    (display "ISSUE_HINT: if error: eval_flat/unbound → Aura host residual; if unexpected refuse on stub → denseness/driver; attach WAVE+RESULT+DIAG")
+    (display "ISSUE_HINT: if error: eval_flat/unbound → Aura host residual; if LLM rate-limit → harness backoff; attach WAVE+RESULT+DIAG")
     (newline)))
