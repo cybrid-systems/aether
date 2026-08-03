@@ -32,7 +32,7 @@ Earlier wave (closed, partial fix): [#2566](https://github.com/cybrid-systems/au
 
 ## When fixed, Aether follow-ups
 
-1. **#2581 (H5+H6)** → re-enable true parallel probe (replace or dual-mode fanout).  
+1. **#2581 (H5+H6)** → Aether **17** landed (`aether:fanout` dual-mode; keep issue open for host permanence).  
 2. **#2579 (H3+H4+H8)** → extract A+F fully into `aether-measure` / `aether-loop`.  
 3. **#2580 (H1)** → simplify probe style (multi-bind `let` allowed).  
 4. **#2582 (H7)** → optional official hot-strategy surface in example 04.
