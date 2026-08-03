@@ -15,23 +15,23 @@ N agents ──aether:fanout──► (parallel-yield when live) ──► pure-
 ≈ N×6 short llm:chat when live
 ```
 
-**Harness default (continuous full-blast)**:
+**Harness default = maximum pressure** (`./scripts/overnight-mutate.sh` alone):
 
 ```
-sleep=0 (no cooldown)
-start agents=MAX (default 32)
-parallel_jobs=4 concurrent aura processes (live)
-  each process: N fiber agents × 6 waves via orch:parallel-with-yield
-  ≈ jobs × agents × 6 concurrent-ish LLM calls per invocation batch
+sleep=0
+agents=64
+parallel_jobs=16 concurrent aura processes (live)
+  each: 64 fiber agents × 6 waves (orch:parallel-with-yield preferred)
+  ≈ 16 × 64 × 6 = 6144 short LLM calls per batch
 
-on LLM fail / 429 / CRASH → agents −= step (floor MIN=8), re-ramp when healthy
-keep hammering until clock stop (next 08:00)
+on hard fail only → brief agent trim, re-ramp to max; sleep stays 0
+until clock stop (next 08:00)
 ```
 
 | Mode | Propose pressure |
 |------|------------------|
-| **live** | multi-process × multi-fiber agents, continuous, no sleep |
-| **stub/offline** | single job; suite uses fixed `AETHER_OVERNIGHT_AGENTS=6` |
+| **live** | max multi-process × multi-fiber, continuous |
+| **stub/offline** | single job; suite uses `AETHER_OVERNIGHT_AGENTS=6` |
 
 Invariants (unchanged denseness shape):
 
@@ -66,21 +66,21 @@ now ──► 00:00 reset ──► 08:00 STOP
 | `AETHER_OVERNIGHT_SCHEDULE` | `minimax-0-5` | or `duration` |
 | `AETHER_OVERNIGHT_TZ` | `Asia/Shanghai` | clock TZ |
 | `AETHER_OVERNIGHT_WINDOW_HOURS` | `8` | stop at 08:00 |
-| `AETHER_OVERNIGHT_MAX_PROPOSES` | `200` | max invocation batches |
-| `AETHER_OVERNIGHT_SLEEP_SEC` | **`0`** | no cooldown (continuous) |
-| `AETHER_OVERNIGHT_PARALLEL_JOBS` | **`4` live / `1` stub** | concurrent aura processes |
-| `AETHER_OVERNIGHT_ADAPTIVE` | `1` | back off only on failure |
-| `AETHER_OVERNIGHT_AGENTS` | **MAX** | start full (default 32) |
-| `AETHER_OVERNIGHT_AGENTS_MIN` | `8` | floor after backoff |
-| `AETHER_OVERNIGHT_AGENTS_MAX` | `32` | ceiling |
-| `AETHER_OVERNIGHT_AGENTS_STEP_UP` | `4` | re-ramp step |
-| `AETHER_OVERNIGHT_AGENTS_STEP_DOWN` | `4` | −N on LLM fail |
+| `AETHER_OVERNIGHT_MAX_PROPOSES` | **`9999`** | essentially unbounded batches |
+| `AETHER_OVERNIGHT_SLEEP_SEC` | **`0`** | no cooldown |
+| `AETHER_OVERNIGHT_SLEEP_MAX` | **`0`** | never add sleep on backoff |
+| `AETHER_OVERNIGHT_PARALLEL_JOBS` | **`16` live / `1` stub** | concurrent aura processes |
+| `AETHER_OVERNIGHT_ADAPTIVE` | `1` | trim only on hard fail, re-ramp |
+| `AETHER_OVERNIGHT_AGENTS` | **`64`** | start at max |
+| `AETHER_OVERNIGHT_AGENTS_MIN` | `16` | floor after backoff |
+| `AETHER_OVERNIGHT_AGENTS_MAX` | **`64`** | ceiling |
+| `AETHER_OVERNIGHT_AGENTS_STEP_UP` | `8` | re-ramp step |
+| `AETHER_OVERNIGHT_AGENTS_STEP_DOWN` | `8` | −N on hard fail |
 | `AETHER_LLM_PROPOSE` | live if key | `live` / `stub` / `rule` |
 
-Rough live concurrency per batch: `jobs × agents × 6` short one-shots  
-(e.g. `4 × 32 × 6 = 768` calls/batch if every agent every wave hits live).
+Rough live per batch: `16 × 64 × 6 ≈ 6144` short one-shots.
 
-Log lines: `PRESSURE agents=… jobs=…` / `PRESSURE_NEXT action=…` / `WAVE mode=parallel-yield`.
+Log lines: `PRESSURE agents=… jobs=…` / `PRESSURE_NEXT` / `WAVE mode=parallel-yield`.
 
 ### Context (1M)
 

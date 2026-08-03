@@ -10,8 +10,11 @@
 #
 # Usage:
 #   ./scripts/overnight-mutate.sh
+#     → live defaults = max pressure (sleep=0, agents=64, parallel_jobs=16)
+#   # gentle smoke:
 #   AETHER_OVERNIGHT_SCHEDULE=duration AETHER_OVERNIGHT_MAX_MINUTES=3 \
-#     AETHER_OVERNIGHT_MAX_PROPOSES=2 AETHER_OVERNIGHT_SLEEP_SEC=5 \
+#     AETHER_OVERNIGHT_MAX_PROPOSES=2 AETHER_OVERNIGHT_PARALLEL_JOBS=1 \
+#     AETHER_OVERNIGHT_AGENTS=4 AETHER_LLM_PROPOSE=stub \
 #     ./scripts/overnight-mutate.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,29 +26,29 @@ SCHEDULE="${AETHER_OVERNIGHT_SCHEDULE:-minimax-0-5}"
 RESET_HOUR="${AETHER_OVERNIGHT_RESET_HOUR:-0}"
 WINDOW_HOURS="${AETHER_OVERNIGHT_WINDOW_HOURS:-8}"
 PEAK_ONLY="${AETHER_OVERNIGHT_PEAK_ONLY:-0}"
-MAX_PROPOSES="${AETHER_OVERNIGHT_MAX_PROPOSES:-200}"
-# Continuous pressure: default no cooldown. Set SLEEP_SEC>0 to throttle.
+# ── DEFAULTS = MAXIMUM PRESSURE ──────────────────────────────
+# Continuous full-blast: no sleep, max agents, max parallel aura jobs.
+# Override env only when you intentionally want to throttle.
+MAX_PROPOSES="${AETHER_OVERNIGHT_MAX_PROPOSES:-9999}"
 SLEEP_SEC="${AETHER_OVERNIGHT_SLEEP_SEC:-0}"
 SLEEP_MIN="${AETHER_OVERNIGHT_SLEEP_MIN:-0}"
-SLEEP_MAX="${AETHER_OVERNIGHT_SLEEP_MAX:-60}"
+SLEEP_MAX="${AETHER_OVERNIGHT_SLEEP_MAX:-0}"   # 0 = never add sleep on backoff
 MAX_MINUTES="${AETHER_OVERNIGHT_MAX_MINUTES:-}"
 
-# Multi-process shell fanout (each job is a full aura driver with N fiber agents).
-# Live default 4 concurrent aura processes; stub/suite-friendly default 1.
+# Multi-process shell fanout (each job = full aura driver with N fiber agents).
 PARALLEL_JOBS="${AETHER_OVERNIGHT_PARALLEL_JOBS:-}"
 
-# Adaptive: start near full blast (MAX), back off only on LLM/host failure, re-ramp.
-AGENTS_MIN="${AETHER_OVERNIGHT_AGENTS_MIN:-8}"
-AGENTS_MAX="${AETHER_OVERNIGHT_AGENTS_MAX:-32}"
-AGENTS_STEP_UP="${AETHER_OVERNIGHT_AGENTS_STEP_UP:-4}"
-AGENTS_STEP_DOWN="${AETHER_OVERNIGHT_AGENTS_STEP_DOWN:-4}"
+# Always start at MAX agents. Adaptive only trims on hard failure then re-ramps.
+AGENTS_MIN="${AETHER_OVERNIGHT_AGENTS_MIN:-16}"
+AGENTS_MAX="${AETHER_OVERNIGHT_AGENTS_MAX:-64}"
+AGENTS_STEP_UP="${AETHER_OVERNIGHT_AGENTS_STEP_UP:-8}"
+AGENTS_STEP_DOWN="${AETHER_OVERNIGHT_AGENTS_STEP_DOWN:-8}"
 ADAPTIVE="${AETHER_OVERNIGHT_ADAPTIVE:-1}"
 if [[ "$ADAPTIVE" == "0" || "$ADAPTIVE" == "false" ]]; then
   ADAPTIVE=0
   AGENTS_CUR="${AETHER_OVERNIGHT_AGENTS:-$AGENTS_MAX}"
 else
   ADAPTIVE=1
-  # Start at MAX (press full), not MIN — user wants continuous full pressure.
   AGENTS_CUR="${AETHER_OVERNIGHT_AGENTS:-$AGENTS_MAX}"
 fi
 if (( AGENTS_CUR < AGENTS_MIN )); then AGENTS_CUR=$AGENTS_MIN; fi
@@ -69,16 +72,16 @@ if [[ -z "${AETHER_LLM_PROPOSE:-}" ]]; then
   fi
 fi
 
-# Default parallel aura processes: hammer live, single for stub.
+# Default parallel aura processes: max for live, single for stub (CI-friendly).
 if [[ -z "$PARALLEL_JOBS" ]]; then
   if [[ "${AETHER_LLM_PROPOSE}" == "live" ]]; then
-    PARALLEL_JOBS=4
+    PARALLEL_JOBS=16
   else
     PARALLEL_JOBS=1
   fi
 fi
 if (( PARALLEL_JOBS < 1 )); then PARALLEL_JOBS=1; fi
-if (( PARALLEL_JOBS > 16 )); then PARALLEL_JOBS=16; fi
+if (( PARALLEL_JOBS > 32 )); then PARALLEL_JOBS=32; fi
 
 AURA_BIN="${AURA_BIN:-$ROOT/../aura-grok/build/aura}"
 AETHER_SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
