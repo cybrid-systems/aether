@@ -55,7 +55,8 @@
 (if (and (string? agents-env) (> (string-length agents-env) 0))
   (begin
     (set! n-parsed (string->number agents-env))
-    (if (and (number? n-parsed) (>= n-parsed 1) (<= n-parsed 32))
+    ; Cap 60: arbitrate/host returns #f at 64 on current aura-grok.
+    (if (and (number? n-parsed) (>= n-parsed 1) (<= n-parsed 60))
       (set! n-agents n-parsed)
       #f))
   #f)

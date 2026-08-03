@@ -19,10 +19,10 @@ N agents ──aether:fanout──► (parallel-yield when live) ──► pure-
 
 ```
 sleep=0
-agents=64
+agents=60 (host-stable max; 64 arbiter returns #f)
 parallel_jobs=16 concurrent aura processes (live)
-  each: 64 fiber agents × 6 waves (orch:parallel-with-yield preferred)
-  ≈ 16 × 64 × 6 = 6144 short LLM calls per batch
+  each: 60 fiber agents × 6 waves (orch:parallel-with-yield preferred)
+  ≈ 16 × 60 × 6 = 5760 short LLM calls per batch
 
 on hard fail only → brief agent trim, re-ramp to max; sleep stays 0
 until clock stop (next 08:00)
@@ -71,14 +71,14 @@ now ──► 00:00 reset ──► 08:00 STOP
 | `AETHER_OVERNIGHT_SLEEP_MAX` | **`0`** | never add sleep on backoff |
 | `AETHER_OVERNIGHT_PARALLEL_JOBS` | **`16` live / `1` stub** | concurrent aura processes |
 | `AETHER_OVERNIGHT_ADAPTIVE` | `1` | trim only on hard fail, re-ramp |
-| `AETHER_OVERNIGHT_AGENTS` | **`64`** | start at max |
+| `AETHER_OVERNIGHT_AGENTS` | **`60`** | start at max |
 | `AETHER_OVERNIGHT_AGENTS_MIN` | `16` | floor after backoff |
-| `AETHER_OVERNIGHT_AGENTS_MAX` | **`64`** | ceiling |
+| `AETHER_OVERNIGHT_AGENTS_MAX` | **`60`** | ceiling (host-stable) |
 | `AETHER_OVERNIGHT_AGENTS_STEP_UP` | `8` | re-ramp step |
 | `AETHER_OVERNIGHT_AGENTS_STEP_DOWN` | `8` | −N on hard fail |
 | `AETHER_LLM_PROPOSE` | live if key | `live` / `stub` / `rule` |
 
-Rough live per batch: `16 × 64 × 6 ≈ 6144` short one-shots.
+Rough live per batch: `16 × 60 × 6 ≈ 5760` short one-shots.
 
 Log lines: `PRESSURE agents=… jobs=…` / `PRESSURE_NEXT` / `WAVE mode=parallel-yield`.
 

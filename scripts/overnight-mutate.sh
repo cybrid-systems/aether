@@ -10,7 +10,7 @@
 #
 # Usage:
 #   ./scripts/overnight-mutate.sh
-#     → live defaults = max pressure (sleep=0, agents=64, parallel_jobs=16)
+#     → live defaults = max pressure (sleep=0, agents=60, parallel_jobs=16)
 #   # gentle smoke:
 #   AETHER_OVERNIGHT_SCHEDULE=duration AETHER_OVERNIGHT_MAX_MINUTES=3 \
 #     AETHER_OVERNIGHT_MAX_PROPOSES=2 AETHER_OVERNIGHT_PARALLEL_JOBS=1 \
@@ -39,8 +39,9 @@ MAX_MINUTES="${AETHER_OVERNIGHT_MAX_MINUTES:-}"
 PARALLEL_JOBS="${AETHER_OVERNIGHT_PARALLEL_JOBS:-}"
 
 # Always start at MAX agents. Adaptive only trims on hard failure then re-ramps.
+# Host/arbitrate stable through ~60 agents; 64 returns picked=#f (refuse).
 AGENTS_MIN="${AETHER_OVERNIGHT_AGENTS_MIN:-16}"
-AGENTS_MAX="${AETHER_OVERNIGHT_AGENTS_MAX:-64}"
+AGENTS_MAX="${AETHER_OVERNIGHT_AGENTS_MAX:-60}"
 AGENTS_STEP_UP="${AETHER_OVERNIGHT_AGENTS_STEP_UP:-8}"
 AGENTS_STEP_DOWN="${AETHER_OVERNIGHT_AGENTS_STEP_DOWN:-8}"
 ADAPTIVE="${AETHER_OVERNIGHT_ADAPTIVE:-1}"
