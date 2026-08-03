@@ -23,24 +23,30 @@ SCHEDULE="${AETHER_OVERNIGHT_SCHEDULE:-minimax-0-5}"
 RESET_HOUR="${AETHER_OVERNIGHT_RESET_HOUR:-0}"
 WINDOW_HOURS="${AETHER_OVERNIGHT_WINDOW_HOURS:-8}"
 PEAK_ONLY="${AETHER_OVERNIGHT_PEAK_ONLY:-0}"
-MAX_PROPOSES="${AETHER_OVERNIGHT_MAX_PROPOSES:-80}"
-SLEEP_SEC="${AETHER_OVERNIGHT_SLEEP_SEC:-20}"
-SLEEP_MIN="${AETHER_OVERNIGHT_SLEEP_MIN:-8}"
-SLEEP_MAX="${AETHER_OVERNIGHT_SLEEP_MAX:-120}"
+MAX_PROPOSES="${AETHER_OVERNIGHT_MAX_PROPOSES:-200}"
+# Continuous pressure: default no cooldown. Set SLEEP_SEC>0 to throttle.
+SLEEP_SEC="${AETHER_OVERNIGHT_SLEEP_SEC:-0}"
+SLEEP_MIN="${AETHER_OVERNIGHT_SLEEP_MIN:-0}"
+SLEEP_MAX="${AETHER_OVERNIGHT_SLEEP_MAX:-60}"
 MAX_MINUTES="${AETHER_OVERNIGHT_MAX_MINUTES:-}"
 
-# Adaptive multi-agent pressure: ramp until LLM fails, then back off and sustain.
-AGENTS_MIN="${AETHER_OVERNIGHT_AGENTS_MIN:-2}"
-AGENTS_MAX="${AETHER_OVERNIGHT_AGENTS_MAX:-24}"
-AGENTS_STEP_UP="${AETHER_OVERNIGHT_AGENTS_STEP_UP:-2}"
+# Multi-process shell fanout (each job is a full aura driver with N fiber agents).
+# Live default 4 concurrent aura processes; stub/suite-friendly default 1.
+PARALLEL_JOBS="${AETHER_OVERNIGHT_PARALLEL_JOBS:-}"
+
+# Adaptive: start near full blast (MAX), back off only on LLM/host failure, re-ramp.
+AGENTS_MIN="${AETHER_OVERNIGHT_AGENTS_MIN:-8}"
+AGENTS_MAX="${AETHER_OVERNIGHT_AGENTS_MAX:-32}"
+AGENTS_STEP_UP="${AETHER_OVERNIGHT_AGENTS_STEP_UP:-4}"
 AGENTS_STEP_DOWN="${AETHER_OVERNIGHT_AGENTS_STEP_DOWN:-4}"
 ADAPTIVE="${AETHER_OVERNIGHT_ADAPTIVE:-1}"
 if [[ "$ADAPTIVE" == "0" || "$ADAPTIVE" == "false" ]]; then
   ADAPTIVE=0
-  AGENTS_CUR="${AETHER_OVERNIGHT_AGENTS:-6}"
+  AGENTS_CUR="${AETHER_OVERNIGHT_AGENTS:-$AGENTS_MAX}"
 else
   ADAPTIVE=1
-  AGENTS_CUR="${AETHER_OVERNIGHT_AGENTS:-$AGENTS_MIN}"
+  # Start at MAX (press full), not MIN — user wants continuous full pressure.
+  AGENTS_CUR="${AETHER_OVERNIGHT_AGENTS:-$AGENTS_MAX}"
 fi
 if (( AGENTS_CUR < AGENTS_MIN )); then AGENTS_CUR=$AGENTS_MIN; fi
 if (( AGENTS_CUR > AGENTS_MAX )); then AGENTS_CUR=$AGENTS_MAX; fi
@@ -62,6 +68,17 @@ if [[ -z "${AETHER_LLM_PROPOSE:-}" ]]; then
     export AETHER_LLM_PROPOSE=stub
   fi
 fi
+
+# Default parallel aura processes: hammer live, single for stub.
+if [[ -z "$PARALLEL_JOBS" ]]; then
+  if [[ "${AETHER_LLM_PROPOSE}" == "live" ]]; then
+    PARALLEL_JOBS=4
+  else
+    PARALLEL_JOBS=1
+  fi
+fi
+if (( PARALLEL_JOBS < 1 )); then PARALLEL_JOBS=1; fi
+if (( PARALLEL_JOBS > 16 )); then PARALLEL_JOBS=16; fi
 
 AURA_BIN="${AURA_BIN:-$ROOT/../aura-grok/build/aura}"
 AETHER_SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -214,9 +231,10 @@ OVERNIGHT SESSION
   hard_stop:      $stop_reason  (~${remain_to_deadline}m)
   max_invocations:$MAX_PROPOSES  sleep=${SLEEP_SEC}s (${SLEEP_MIN}–${SLEEP_MAX}) peak_only=$PEAK_ONLY
   adaptive:       $ADAPTIVE  agents=${AGENTS_CUR} (min=$AGENTS_MIN max=$AGENTS_MAX step_up=$AGENTS_STEP_UP step_down=$AGENTS_STEP_DOWN)
+  parallel_jobs:  $PARALLEL_JOBS concurrent aura processes × agents (fiber fanout inside each)
   mode:           $AETHER_LLM_PROPOSE
-  pressure:       stage ramp agents until LLM fail → backoff → sustain
-  est_live_max:   ~$est_live_calls_max (if always at max agents)
+  pressure:       continuous full-blast (sleep=0); fiber parallel agents; multi-process shell fanout
+  est_live_max:   ~$((MAX_PROPOSES * AGENTS_MAX * 6 * PARALLEL_JOBS)) (inv × agents × waves × jobs)
   logs:
     run_log:      $RUN_LOG
     anomaly_log:  $ANOMALY_LOG
@@ -343,22 +361,39 @@ while true; do
 
   {
     echo "======== INVOCATION $invocations / $MAX_PROPOSES  session=$SESSION_ID  utc=$inv_ts  ~${rem_m}m left ========"
-    echo "PRESSURE agents=$AGENTS_CUR sleep=${SLEEP_SEC}s adaptive=$ADAPTIVE peak_seen=$PEAK_AGENTS_SEEN est_llm_calls≈$est_calls"
+    echo "PRESSURE agents=$AGENTS_CUR jobs=$PARALLEL_JOBS sleep=${SLEEP_SEC}s adaptive=$ADAPTIVE peak_seen=$PEAK_AGENTS_SEEN est_llm_calls≈$((est_calls * PARALLEL_JOBS)) (agents×waves×jobs)"
     echo "AETHER_SHA=$AETHER_SHA AURA_SHA=$AURA_SHA MODE=$AETHER_LLM_PROPOSE"
   } | tee -a "$RUN_LOG"
 
+  # Concurrent aura processes (shell fanout) — each runs full multi-agent fiber fanout.
   set +e
-  out=$(./scripts/run-aura.sh "$DRIVER" 2>&1)
-  rc=$?
+  pids=()
+  job_files=()
+  for j in $(seq 1 "$PARALLEL_JOBS"); do
+    jf="${inv_file}.job$(printf '%02d' "$j")"
+    job_files+=("$jf")
+    (
+      echo "# overnight inv=$invocations job=$j/$PARALLEL_JOBS agents=$AGENTS_CUR"
+      echo "session_id=$SESSION_ID utc=$inv_ts"
+      ./scripts/run-aura.sh "$DRIVER" 2>&1
+      echo "JOB_EXIT job=$j rc=$?"
+    ) >"$jf" 2>&1 &
+    pids+=($!)
+  done
+  rc=0
+  for pid in "${pids[@]}"; do
+    if ! wait "$pid"; then rc=1; fi
+  done
   set -e
 
-  # Full per-invocation log (issue attachment)
+  # Merge job logs
   {
-    echo "# overnight invocation $invocations"
+    echo "# overnight invocation $invocations (parallel_jobs=$PARALLEL_JOBS)"
     echo "session_id=$SESSION_ID"
     echo "utc=$inv_ts"
     echo "rc=$rc"
     echo "agents=$AGENTS_CUR"
+    echo "parallel_jobs=$PARALLEL_JOBS"
     echo "sleep_sec=$SLEEP_SEC"
     echo "pressure_peak_seen=$PEAK_AGENTS_SEEN"
     echo "aether_sha=$AETHER_SHA"
@@ -366,9 +401,12 @@ while true; do
     echo "mode=$AETHER_LLM_PROPOSE"
     echo "driver=$DRIVER"
     echo "aura_bin=$AURA_BIN"
-    echo "---- stdout+stderr ----"
-    echo "$out"
+    for jf in "${job_files[@]}"; do
+      echo "==== $(basename "$jf") ===="
+      cat "$jf"
+    done
   } >"$inv_file"
+  out=$(cat "$inv_file")
 
   # Tail to console + run log
   echo "$out" | tee -a "$RUN_LOG" | tail -n 20
@@ -402,10 +440,10 @@ while true; do
       "$excerpt" "$result_line" "$host_hints"
     echo "WARN: CRASH rc=$rc → anomaly logged (inv log: $inv_file)" | tee -a "$RUN_LOG"
     pressure_action="backoff_hard"
-  elif echo "$out" | grep -q '^PASS:'; then
+  elif pass_jobs=$(echo "$out" | grep -c '^PASS:' || true); [[ "${pass_jobs:-0}" -ge "$PARALLEL_JOBS" ]]; then
     status="pass"
     pass_n=$((pass_n + 1))
-    echo "OK: PASS inv=$invocations agents=$AGENTS_CUR result=${result_line:-"(no RESULT)"}" | tee -a "$RUN_LOG"
+    echo "OK: PASS inv=$invocations agents=$AGENTS_CUR jobs_pass=$pass_jobs/$PARALLEL_JOBS result=${result_line:-"(no RESULT)"}" | tee -a "$RUN_LOG"
     if (( llm_fail )); then
       pressure_action="backoff_llm"
     else
@@ -459,8 +497,13 @@ while true; do
         fi
         AGENTS_CUR=$(( AGENTS_CUR - step ))
         if (( AGENTS_CUR < AGENTS_MIN )); then AGENTS_CUR=$AGENTS_MIN; fi
-        SLEEP_SEC=$(( SLEEP_SEC + 15 ))
-        if (( SLEEP_SEC > SLEEP_MAX )); then SLEEP_SEC=$SLEEP_MAX; fi
+        # Only throttle if SLEEP_MAX > 0; default continuous hammer keeps sleep=0
+        if (( SLEEP_MAX > 0 )); then
+          SLEEP_SEC=$(( SLEEP_SEC + 5 ))
+          if (( SLEEP_SEC > SLEEP_MAX )); then SLEEP_SEC=$SLEEP_MAX; fi
+        else
+          SLEEP_SEC=0
+        fi
         BACKOFF_N=$((BACKOFF_N + 1))
         ;;
       hold) ;;
