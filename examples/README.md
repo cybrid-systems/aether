@@ -31,12 +31,17 @@ Phase 1–3 offline suite includes N=100 soak (`./scripts/report.sh`). Judgment:
 | `17-true-parallel` | orch parallel-yield fanout (requires host) |
 | `18-multi-bind-let` | Multi-bind `let` after rebind (H1) |
 | `19-hot-strategy` | `std/hot-strategy` pure-Aura swap/heal (H7) |
+| `20-multi-live-propose` | Phase 5 multi stub/live propose + pure-Aura arbiter |
+| `21-concurrent-propose-yield` | Phase 5 concurrent fanout + yield + single mutator |
+| `22-overnight-mutate` | Phase 5 budget-bounded continuous mutate driver |
 
-## Live (not in run-all)
+## Live (not in run-all as live; offline stubs are)
 
 | Dir | Claim |
 |-----|--------|
 | `09-live-minimax` | MiniMax-M3 live propose (`source ../scripts/env-minimax.sh`) |
+| `20` / `21` live | `AETHER_LLM_PROPOSE=live` (auto key via `run-aura.sh`) |
+| Overnight | `./scripts/overnight-mutate.sh` (budget + rate) |
 
 ## Add a probe
 

@@ -1,0 +1,214 @@
+; examples/20-multi-live-propose/main.aura
+; Phase 5 / issue #1: multi live-LLM propose + pure-Aura arbitration.
+;
+; Topology:
+;   Agent A ──propose──┐
+;   Agent B ──propose──┼── pure-Aura arbiter ── single executor ── M/V/R
+;   Agent C ──propose──┘
+;
+; Offline default: stub multi-propose (no network; E metered).
+; Live opt-in: AETHER_LLM_PROPOSE=live + LLM_API_KEY.
+;
+; Run offline: ./scripts/run-aura.sh examples/20-multi-live-propose/main.aura
+; Run live:    AETHER_LLM_PROPOSE=live ./scripts/run-aura.sh examples/20-multi-live-propose/main.aura
+
+(require "std/list" all:)
+(require "aether-min" all:)
+(require "aether-domain" all:)
+(require "aether-propose" all:)
+(require "aether-orch" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether 20-multi-live-propose: multi propose + pure-Aura arbiter ===")
+(newline)
+
+; Pre-allocate cells before any mutate (host: define-after-rebind is flaky).
+(define installed #f)
+(define pm #f)
+(define key #f)
+(define live? #f)
+(define fails-now 0)
+(define p-a #f)
+(define p-b #f)
+(define p-c #f)
+(define picked #f)
+(define exec-r #f)
+(define a-ok #f)
+(define b-ok #f)
+(define c-ok #f)
+(define all-ok #f)
+(define esc0 0)
+(define esc1 0)
+(define fails-before-c 0)
+
+(define (exec-picked proposal need?)
+  (aether:execute-proposal
+    proposal
+    (lambda () (aether:gate-fail-count))
+    need?
+    aether:gate-within-budget?))
+
+(set! pm (aether:propose-mode))
+(set! key (getenv "LLM_API_KEY"))
+(set! live?
+  (and (equal? pm "live")
+       (string? key)
+       (> (string-length key) 0)))
+
+(display "propose-mode=")
+(display pm)
+(display " live?=")
+(display live?)
+(newline)
+
+(set! installed (aether:gate-install-strict))
+(display "R0 batch=")
+(display (aether:gate-run-batch))
+(display " fails=")
+(display (aether:gate-fail-count))
+(newline)
+
+; ── A: over budget — 3 proposers; arb prefers widen; single commit ──
+(set! fails-now (aether:gate-fail-count))
+(set! esc0 (aether:stats-ref "escapes"))
+(if live?
+  (begin
+    (set! p-a (aether:propose fails-now 4 "auto"))
+    (set! p-b (aether:propose fails-now 4 "auto"))
+    (set! p-c (aether:propose fails-now 4 "auto")))
+  (begin
+    ; Offline stub agents (E bumped per agent; propose-edge only)
+    (aether:stats-bump! "escapes")
+    (set! p-a
+      (if (> fails-now 4)
+        (list "mutate" "gate" "(lambda (x) (< x 7))" "stub-cons-widen" "llm-stub-A")
+        (list "skip" "gate" "" "stub-cons-skip" "llm-stub-A")))
+    (aether:stats-bump! "escapes")
+    (set! p-b
+      (if (> fails-now 3)
+        (list "mutate" "gate" "(lambda (x) (< x 7))" "stub-agg-widen" "llm-stub-B")
+        (list "skip" "gate" "" "stub-agg-skip" "llm-stub-B")))
+    (aether:stats-bump! "escapes")
+    (set! p-c
+      (list "mutate" "gate" "(lambda (x) #f)" "stub-rogue-deny" "llm-stub-C"))))
+(set! esc1 (aether:stats-ref "escapes"))
+(set! picked (aether:arbitrate (list p-a p-b p-c) (aether:gate-within-budget?)))
+(display "A props=")
+(write (list p-a p-b p-c))
+(newline)
+(display "A picked=")
+(write picked)
+(newline)
+(display "A escapes delta=")
+(display (- esc1 esc0))
+(newline)
+(set! exec-r (exec-picked picked (lambda () #t)))
+(display "A exec=")
+(write exec-r)
+(newline)
+(display "A batch=")
+(display (aether:gate-run-batch))
+(newline)
+; Offline: require classic widen body. Live: any schema-valid non-deny mutate commit.
+(set! a-ok
+  (and (pair? p-a) (pair? p-b) (pair? p-c)
+       (>= (- esc1 esc0) 1)
+       (equal? (car picked) "mutate")
+       (not (aether:proposal-deny? picked))
+       (aether:proposal-valid? picked)
+       (or live? (aether:proposal-widen? picked))
+       (eq? (aether:alist-ref ":decision" exec-r #f) 'commit)
+       (aether:gate-within-budget?)))
+
+; ── B: healthy — multi propose; arb prefers skip; deny filtered ──
+(set! fails-now (aether:gate-fail-count))
+(if live?
+  (begin
+    (set! p-a (aether:propose fails-now 4 "auto"))
+    (set! p-b (aether:propose fails-now 4 "auto"))
+    (set! p-c (aether:propose fails-now 4 "auto")))
+  (begin
+    (aether:stats-bump! "escapes")
+    (set! p-a
+      (if (> fails-now 4)
+        (list "mutate" "gate" "(lambda (x) (< x 7))" "stub-cons-widen" "llm-stub-A")
+        (list "skip" "gate" "" "stub-cons-skip" "llm-stub-A")))
+    (aether:stats-bump! "escapes")
+    (set! p-b
+      (if (> fails-now 3)
+        (list "mutate" "gate" "(lambda (x) (< x 7))" "stub-agg-widen" "llm-stub-B")
+        (list "skip" "gate" "" "stub-agg-skip" "llm-stub-B")))
+    (aether:stats-bump! "escapes")
+    (set! p-c
+      (list "mutate" "gate" "(lambda (x) #f)" "stub-rogue-deny" "llm-stub-C"))))
+(set! picked (aether:arbitrate (list p-a p-b p-c) (aether:gate-within-budget?)))
+(display "B props=")
+(write (list p-a p-b p-c))
+(newline)
+(display "B picked=")
+(write picked)
+(newline)
+(set! exec-r (exec-picked picked (lambda () #f)))
+(display "B exec=")
+(write exec-r)
+(newline)
+; Offline: arb prefers skip when healthy. Live LLM may still propose mutate;
+; executor with need?=#f must not rebind (decision skip) and stay safe.
+(set! b-ok
+  (and (pair? p-a) (pair? p-b) (pair? p-c)
+       (not (aether:proposal-deny? picked))
+       (eq? (aether:alist-ref ":decision" exec-r #f) 'skip)
+       (aether:gate-within-budget?)
+       (or live? (equal? (car picked) "skip"))))
+
+; ── C: garbage proposal never rebinds (schema refuse) ──
+(set! fails-before-c (aether:gate-fail-count))
+(set! picked (list "explode" "gate" "(lambda (x) (< x 7))" "garbage" "adversary"))
+(set! exec-r (exec-picked picked (lambda () #t)))
+(display "C garbage exec=")
+(write exec-r)
+(newline)
+(set! c-ok
+  (and (eq? (aether:alist-ref ":decision" exec-r #f) 'refuse)
+       (= (aether:gate-fail-count) fails-before-c)
+       (aether:safety-ok?)))
+
+(display "stats ")
+(write (aether:stats-alist))
+(newline)
+
+(set! all-ok
+  (and installed
+       a-ok b-ok c-ok
+       (aether:safety-ok?)
+       (>= (aether:stats-ref "escapes") 3)
+       (>= (aether:stats-ref "commits") 1)
+       (>= (aether:stats-ref "decide-skip") 1)))
+
+(if all-ok
+  (begin
+    (display "PASS: multi live/stub propose + pure-Aura arbiter (single executor)")
+    (newline)
+    (display "core E=0; propose-edge E metered; arbiter filters deny; garbage refuses")
+    (newline)
+    (display "RESULT pass example=20-multi-live-propose live=")
+    (display live?)
+    (display " escapes=")
+    (display (aether:stats-ref "escapes"))
+    (display " commits=")
+    (display (aether:stats-ref "commits"))
+    (newline))
+  (begin
+    (display "FAIL: multi-live-propose")
+    (newline)
+    (display " a-ok=")
+    (display a-ok)
+    (display " b-ok=")
+    (display b-ok)
+    (display " c-ok=")
+    (display c-ok)
+    (newline)
+    (display "RESULT fail example=20-multi-live-propose escapes=")
+    (display (aether:stats-ref "escapes"))
+    (newline)))

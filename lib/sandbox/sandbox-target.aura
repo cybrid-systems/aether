@@ -1,0 +1,39 @@
+; lib/sandbox/sandbox-target.aura — designated mutate target for overnight harness
+;
+; Not loaded by the main denseness suite. Overnight / live mutate loops may
+; rebind `sandbox-gate` here without touching aether-min / aether-domain.
+;
+; (require "sandbox/sandbox-target" all:)  ; when AURA_PATH includes lib/
+
+(export sandbox-gate
+        sandbox:body-strict
+        sandbox:body-widen
+        sandbox:install!
+        sandbox:run-batch
+        sandbox:fail-count
+        sandbox:within-budget?)
+
+(define sandbox:body-strict "(lambda (x) (< x 4))")
+(define sandbox:body-widen "(lambda (x) (< x 7))")
+
+(define (sandbox-gate x)
+  (< x 4))
+
+(define (sandbox:install!)
+  (set! sandbox-gate (lambda (x) (< x 4)))
+  #t)
+
+(define (sandbox:run-batch)
+  (let ((xs (list 1 2 3 4 5 6 7 8 9 10)))
+    (let loop ((ys xs) (ok 0) (bad 0))
+      (if (null? ys)
+        (list ok bad)
+        (if (sandbox-gate (car ys))
+          (loop (cdr ys) (+ ok 1) bad)
+          (loop (cdr ys) ok (+ bad 1)))))))
+
+(define (sandbox:fail-count)
+  (car (cdr (sandbox:run-batch))))
+
+(define (sandbox:within-budget?)
+  (<= (sandbox:fail-count) 4))

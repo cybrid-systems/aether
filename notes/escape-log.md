@@ -20,10 +20,20 @@ Host configuration used for demos (not counted as \(V_A\) escapes of the evolvab
 - `AURA_SANDBOX=off` — CLI must allow workspace mutation; production isolation remains Aura’s responsibility.
 - `AURA_PIPELINE_STRICT=0` — some host builds forbid tree-walker fallback; demo scripts relax this for reproducibility.
 
-### Offline suite PASS paths (01–08, 10–14)
+### Offline suite PASS paths (01–08, 10–22)
 
 No business-logic escapes on the evolvable core. Propose-edge \(E\) is metered
-only where intentional (06 stub, 08 sim, 09 live).
+only where intentional (06 stub, 08 sim, 09 live, 20–22 multi/overnight stub).
+
+## [2026-08-03] Phase 5 multi-agent propose-edge \(E\) (20–22)
+
+- Location: `examples/20-multi-live-propose`, `21-concurrent-propose-yield`,
+  `22-overnight-mutate`, `lib/aether-propose.aura` live path
+- Reason: multi-agent denseness evidence; LLM only on propose edge
+- Escape mechanism: stub marker (offline) or `std/llm` HTTPS (live MiniMax-M3)
+- Impact: **propose edge only** — arbiter + executor pure Aura; single mutator
+- Mitigation: schema/wire gate; `aether:arbitrate` filters deny; escape stats;
+  overnight budget via `scripts/overnight-mutate.sh`
 
 ### Example 06 — intentional propose-edge escape (metering)
 

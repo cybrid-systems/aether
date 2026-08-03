@@ -197,11 +197,24 @@ Escapes on the evolvable core are treated as **evidence against** denseness unti
 
 Apache License 2.0 (same as Aura)
 
-## Status — Phase 1–3 complete
+## Status — Phase 1–5 denseness complete
 
 **Judgment:** on \(S_{\mathrm{Aether}}\), \(V_A\) is **practically dense** on the
-evolvable core (offline suite incl. N=100; live 09 opt-in). Full write-up:
+evolvable core (offline suite incl. N=100 + Phase 5 multi-LLM / overnight;
+live 09/20/21 opt-in). Full write-up:
 [`notes/denseness-report.md`](notes/denseness-report.md).
+
+### Phase map
+
+| Phase | Scope | Status |
+|-------|--------|--------|
+| 1–3 | Loop, propose \(E\), orch, N-soak, multi-tenant, CI | **Landed** |
+| 4 | Version coexist, drift freeze, true parallel, hot-strategy, multi-bind | **Landed** |
+| **5** | Multi live/stub propose + arbiter (**20**); concurrent fanout+yield (**21**); overnight harness (**22** + `scripts/overnight-mutate.sh`) | **Landed** |
+
+**Phase 5 decision:** concurrent LLM agents stay **inside Aether** as denseness
+probes (axes C+E). **No new Unify span / repo** for an “LLM agent EDSL” until a
+real product surface appears.
 
 ```bash
 ./scripts/check-structure.sh        # no Aura binary required (also CI)
@@ -209,6 +222,9 @@ evolvable core (offline suite incl. N=100; live 09 opt-in). Full write-up:
 ./scripts/run-all.sh
 source ./scripts/env-minimax.sh
 ./scripts/run-aura.sh examples/09-live-minimax/main.aura
+AETHER_LLM_PROPOSE=live ./scripts/run-aura.sh examples/20-multi-live-propose/main.aura
+# multi-minute / overnight (budgeted MiniMax-M3):
+./scripts/overnight-mutate.sh
 ```
 
 | Example | Proves |
@@ -232,8 +248,12 @@ source ./scripts/env-minimax.sh
 | **17** | **True parallel** fanout (`orch:parallel-with-yield`) |
 | **18** | **Multi-bind let** after rebind (H1 regression) |
 | **19** | **`std/hot-strategy`** pure-Aura swap/heal (H7) |
+| **20** | **Multi live/stub propose** + pure-Aura arbiter (Phase 5) |
+| **21** | **Concurrent propose fanout** + yield + single mutator (Phase 5) |
+| **22** | **Overnight mutate** driver (budget-bounded; sandbox domain) |
 
 New probe: copy `examples/_template` → `examples/NN-name`, add to `run-all.sh` / `report.sh` if offline.
 
 Host residual tracker: [`notes/host-residuals.md`](notes/host-residuals.md).  
+Aura anomaly mining: [`notes/aura-anomaly-log.md`](notes/aura-anomaly-log.md).  
 See [`examples/README.md`](examples/README.md), [`lib/README.md`](lib/README.md), [`prompts/GROK.md`](prompts/GROK.md).

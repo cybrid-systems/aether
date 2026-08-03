@@ -23,6 +23,9 @@ EXAMPLES=(
   examples/17-true-parallel/main.aura
   examples/18-multi-bind-let/main.aura
   examples/19-hot-strategy/main.aura
+  examples/20-multi-live-propose/main.aura
+  examples/21-concurrent-propose-yield/main.aura
+  examples/22-overnight-mutate/main.aura
 )
 
 fail=0

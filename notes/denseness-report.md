@@ -1,10 +1,10 @@
-# \(S_{\mathrm{Aether}}\) denseness report (Phase 1–4)
+# \(S_{\mathrm{Aether}}\) denseness report (Phase 1–5)
 
-**Date:** 2026-08-02  
+**Date:** 2026-08-03  
 **Host:** Aura (local `aura-grok`) with fixes #2566–#2570  
 **Surface:** `aether-min` · `aether-mutate-policy` · `aether-domain` · `aether-propose` · `aether-orch` · `aether-region`  
 **Last offline suite:** [last-run-report.md](last-run-report.md)  
-**Live:** example 09 MiniMax-M3 (manual; needs key)  
+**Live:** example 09 MiniMax-M3; Phase 5 multi/concurrent opt-in; overnight harness  
 **CI:** structure always; denseness when Aura binary available (`.github/workflows/denseness.yml`)
 
 ---
@@ -29,10 +29,10 @@ Aether does **not** claim denseness over all of \(S_{\mathrm{practical}}\).
 |------|----------|-------------------|
 | **A** Loop completeness | Multi-round O→D→M→V→R | 01, 02, 05, 10 |
 | **B** Mutation surface | Named rebind stays safe | 01–05, 10, 13 |
-| **C** Orch topology | Dual → arbitrate → yield / true parallel | 03, 11, 12, **17** |
+| **C** Orch topology | Dual → arbitrate → yield / true parallel / multi-LLM | 03, 11, 12, **17**, **20**, **21** |
 | **D** Temporal adaptation | Hot deploy, poison, heal, version, freeze | 04, 05, 10, 13, **15**, **16** |
-| **E** World boundary | Schema / wire / stub / live LLM | 03, 06–09 |
-| **F** Metrology | Stats, report, escape log | all + `scripts/report.sh` |
+| **E** World boundary | Schema / wire / stub / live LLM multi | 03, 06–09, **20**, **21**, **22** |
+| **F** Metrology | Stats, report, escape log, overnight | all + `scripts/report.sh` + overnight |
 
 ---
 
@@ -59,8 +59,11 @@ Aether does **not** claim denseness over all of \(S_{\mathrm{practical}}\).
 | [17-true-parallel](../examples/17-true-parallel/) | C | PASS orch `parallel-yield` fanout after rebind | 0 |
 | [18-multi-bind-let](../examples/18-multi-bind-let/) | A B | PASS multi-bind `let` unpack after rebind (H1) | 0 |
 | [19-hot-strategy](../examples/19-hot-strategy/) | D | PASS `std/hot-strategy` swap + heal (not AOT) | 0 |
+| [20-multi-live-propose](../examples/20-multi-live-propose/) | C E | PASS multi stub/live propose + pure-Aura arbiter | 0 core / ≥3 propose \(E\) |
+| [21-concurrent-propose-yield](../examples/21-concurrent-propose-yield/) | C E | PASS fanout+yield+single mutator; poison rollback | 0 core / ≥3 propose \(E\) |
+| [22-overnight-mutate](../examples/22-overnight-mutate/) | A E F | PASS budget-bounded continuous mutate driver | 0 core |
 
-Offline automation covers **01–08, 10–19**. Live **09** is opt-in (auto MiniMax-M3 when key present).
+Offline automation covers **01–08, 10–22**. Live **09** and live modes of **20/21** are opt-in (MiniMax-M3 when key present). Overnight: `scripts/overnight-mutate.sh`.
 
 ---
 
@@ -154,10 +157,13 @@ denseness for numerical kernels, hard realtime, drivers, or arbitrary product do
 | 1 | Minimal loop, business signal, dual-role | **Landed** |
 | 2 | Hot heal, long-run N=10, first report | **Landed** |
 | 3 | Propose E, schema/wire/live, N=50–100, orch, yield, axis split, multi-tenant, CI | **Landed** |
-| 4 | Version coexistence (15); drift freeze (16) | **Landed** |
-| 4b | True parallel fanout (17) when host orch healthy | **Landed** |
-| 5 | A+F extract to axis modules (min facade v3) | **Landed** |
-| Upstream-blocked | Multi-bind let; hot-update surface; H3 multi-export | [host-residuals.md](host-residuals.md) |
+| 4 | Version coexist (15); drift freeze (16); true parallel (17); multi-bind (18); hot-strategy (19); A+F axis extract (min facade v3) | **Landed** |
+| **5** | Multi live/stub propose + arbiter (**20**); concurrent fanout+yield (**21**); overnight harness (**22** + `overnight-mutate.sh`); **no new span** for concurrent LLM agents | **Landed** |
+| Upstream-blocked | Remaining host polish (see residuals) | [host-residuals.md](host-residuals.md) |
+
+**Phase 5 decision (issue #3):** concurrent LLM multi-agent verification stays in
+**Aether** denseness probes. Do not open a separate Unify span / product EDSL
+repo for this theme.
 
 ---
 

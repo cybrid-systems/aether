@@ -66,7 +66,8 @@ if [[ -z "${LLM_API_KEY:-}" && -f "$_KEY_FILE" ]]; then
   export LLM_BASE_URL="${LLM_BASE_URL:-https://api.minimaxi.com/v1}"
   export LLM_MODEL="${LLM_MODEL:-MiniMax-M3}"
 fi
-# Live probe defaults to live propose when key is available.
+# Only 09 auto-enables live when key present. Phase 5 (20/21/22) stays offline
+# stub/rule unless caller sets AETHER_LLM_PROPOSE=live (or overnight-mutate.sh).
 if [[ "$SRC" == *live-minimax* && -n "${LLM_API_KEY:-}" ]]; then
   export AETHER_LLM_PROPOSE="${AETHER_LLM_PROPOSE:-live}"
 fi

@@ -101,12 +101,13 @@ notes/denseness-report.md
 
 ## Phase plan
 
-### Phase 1–3 (landed — denseness bar met)
+### Phase 1–5 (landed — denseness bar met; Phase 5 multi-LLM inside Aether)
 
-**Offline:** `01`–`08`, `10`–`14` via `./scripts/report.sh`.  
-**Live:** `09` MiniMax-M3 — `source ./scripts/env-minimax.sh` then run-aura.  
+**Offline:** `01`–`08`, `10`–`22` via `./scripts/report.sh`.  
+**Live:** `09` MiniMax-M3; Phase 5 multi/concurrent with `AETHER_LLM_PROPOSE=live`.  
+**Overnight:** `./scripts/overnight-mutate.sh` (budget + rate; anomaly log).  
 **Libs:** `aether-min`, `aether-mutate-policy`, `aether-domain`, `aether-propose`,
-`aether-orch`, `aether-region` (+ narrow measure/loop).  
+`aether-orch`, `aether-region` (+ narrow measure/loop); `lib/sandbox/` for mutate targets.  
 **Key:** `~/code/keys/minimax`; base `https://api.minimaxi.com/v1`; model `MiniMax-M3`.  
 **Host:** Aura #2566–#2570.  
 **CI:** `.github/workflows/denseness.yml` (structure always; suite when Aura binary available).
@@ -121,18 +122,26 @@ Phase highlights:
 | 1 | 01–03 loop / business / dual-role |
 | 2 | 04–05 hot heal + N=10 + first report |
 | 3 | 06–09 propose \(E\); 10–14 N-stress; 11–12 orch; axis split; 13 multi-tenant; CI; final report |
-| 4 | 15 version coexist; 16 drift freeze; 17 true parallel fanout |
+| 4 | 15 version coexist; 16 drift freeze; 17 true parallel; 18 multi-bind; 19 hot-strategy; axis extract |
+| **5** | **20** multi live/stub propose + arbiter; **21** concurrent fanout+yield; **22** overnight harness |
+
+### Phase 5 — no new span
+
+**Concurrent LLM agents are Aether denseness probes (axes C+E), not a new Unify
+span and not an Aura core “LLM agent EDSL”.** Reuse `aether-propose` +
+`aether-orch`; meter \(E\) on the propose edge only. Product multi-model routers,
+sessions, billing stay out of scope until denseness evidence and a real product
+need justify a separate surface.
 
 ### Upstream-blocked / remaining (see `notes/host-residuals.md`)
 
-- Multi-bind `let` (H1 / #2580)  
-- Official hot-strategy surface (H7 / #2582)  
-- Multi-export large define (H3 packaging rule remains; sole-export OK) 
+- Host packaging polish (H1 multi-bind before install-source; H3 sole-export rule)  
+- Fiber/orch residuals → dual-mode fanout (PASS uses sequential-yield or parallel when healthy)
 
 ### Not Aether’s job alone
 
-Concurrency stress, numerical hot paths, hardware/OS extremes — only if required
-by a closed-loop case; otherwise leave to broader Unify span work.
+Numerical hot paths, hardware/OS extremes, commercial multi-agent products —
+only if required by a closed-loop denseness case; otherwise broader Unify work.
 
 ---
 
