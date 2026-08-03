@@ -1,0 +1,59 @@
+; lib/aether-loop-once.aura — Axis A: aether:loop-once (sole export)
+;
+; Host H3: large trailing define in multi-export modules can fail to export.
+; Keep this module single-export so loop-once always surfaces.
+;
+; (require "aether-loop-once" all:)
+; Prefer (require "aether-min" all:) for the full closed-loop facade.
+
+(export aether:loop-once)
+
+(require "std/list" all:)
+(require "aether-measure" all:)
+(require "aether-mutate-policy" all:)
+
+; Inlined O→D path (does not free-call aether-loop observe/decide after rebind).
+(define (aether:loop-once observe-probe need-mutate? name body summary verify-check)
+  (aether:stats-bump! "rounds")
+  (aether:stats-bump! "observe-calls")
+  (let ((obs (try (observe-probe) (catch (e) (list 'error e)))))
+    (if (not (need-mutate?))
+      (begin
+        (aether:stats-bump! "decide-skip")
+        (list (cons ":ok" #t)
+              (cons ":decision" 'skip)
+              (cons ":observation" obs)
+              (cons ":reason" "no-mutate-needed")
+              (cons ":snap" -1)))
+      (begin
+        (aether:stats-bump! "decide-mutate")
+        (let ((mut (aether:rebind-safe name body summary)))
+          (let ((mut-ok (aether:alist-ref ":ok" mut #f)))
+            (let ((snap (aether:alist-ref ":snap" mut -1)))
+              (let ((mreason (aether:alist-ref ":reason" mut "refuse")))
+                (if (not mut-ok)
+                  (begin
+                    (aether:stats-bump! "rollbacks")
+                    (list (cons ":ok" #f)
+                          (cons ":decision" 'refuse)
+                          (cons ":observation" obs)
+                          (cons ":reason" mreason)
+                          (cons ":snap" snap)))
+                  (let ((raw (try (verify-check) (catch (e) #f))))
+                    (if (eq? raw #t)
+                      (begin
+                        (aether:stats-bump! "commits")
+                        (list (cons ":ok" #t)
+                              (cons ":decision" 'commit)
+                              (cons ":observation" obs)
+                              (cons ":reason" "verified")
+                              (cons ":snap" snap)))
+                      (begin
+                        (aether:stats-bump! "verify-fail")
+                        (aether:stats-bump! "rollbacks")
+                        (aether:restore snap)
+                        (list (cons ":ok" #f)
+                              (cons ":decision" 'rollback)
+                              (cons ":observation" obs)
+                              (cons ":reason" "verify-failed")
+                              (cons ":snap" snap))))))))))))))

@@ -2,23 +2,22 @@
 
 | Module | Axis | Role |
 |--------|------|------|
-| `aether-min` | A+B+F facade | **Default** closed-loop surface. Embeds metrology + `loop-once`; re-exports mutate-policy. |
-| `aether-mutate-policy` | B | `install-source`, safety, snapshot/restore, `rebind-safe` |
-| `aether-measure` | F | Stats helpers for **pre-rebind** / tooling only (see file note) |
-| `aether-loop` | A | `observe` / `decide` / `verify` helpers (narrow) |
-| `aether-domain` | domain | Shared admit-gate workload (probes 02–12) |
-| `aether-propose` | E | Schema, wire parse, rule/stub/live propose |
-| `aether-orch` | C | Arbitrate + fanout (parallel-yield preferred, sequential fallback) |
-| `aether-region` | multi-tenant | Dual named gates (`gate-a`/`gate-b`) + per-region batch |
+| `aether-min` | A+B+F facade | Thin re-export; `aether:min-version` 3 |
+| `aether-measure` | **F** | Stats + `alist-ref` (authoritative) |
+| `aether-mutate-policy` | **B** | install / safety / snapshot / rebind |
+| `aether-loop` | **A** | observe / decide / verify |
+| `aether-loop-once` | **A** | `loop-once` only (sole large export) |
+| `aether-domain` | domain | Shared admit-gate workload |
+| `aether-propose` | E | Schema, wire, rule/stub/live propose |
+| `aether-orch` | C | Arbitrate + fanout (parallel preferred) |
+| `aether-region` | multi-tenant | Dual named gates + per-region batch |
 
-## Host packaging discipline
+## Packaging discipline (host H3)
 
-Workspace `set-code` / rebind can break **cross-module free-vars** and private
-module cells. Denseness PASS path therefore:
+- **Large** public bodies must be the **only** export of their module (`aether-loop-once`).
+- Multi-export modules keep **small** defines only (`aether-loop` O/D/V).
+- Prefer `(require "aether-min" all:)` in probes unless composing a single axis.
 
-1. Keeps **stats + `loop-once` same-module** inside `aether-min`
-2. Inlines public entries in `aether-propose` / `aether-orch`
-3. Treats `aether-measure` as axis-shaped import, not the live loop metrology owner
+## Host residuals
 
-Prefer `(require "aether-min" all:)` in probes unless you intentionally compose
-a single axis before any mutation.
+See [notes/host-residuals.md](../notes/host-residuals.md). H4 (cross-module stats) improved; H3 still requires sole-export for `loop-once`.

@@ -1,10 +1,7 @@
-; lib/aether-loop.aura — Axis A primitives (observe / decide / verify)
+; lib/aether-loop.aura — Axis A: observe / decide / verify (small exports)
 ;
 ; (require "aether-loop" all:)
-;
-; aether:loop-once is defined on aether-min (embeds A+F with mutate-policy)
-; so post-rebind closed-loop free-vars stay same-module. This file exports
-; the small O/D/V helpers for axis-shaped composition.
+; aether:loop-once lives in aether-loop-once (sole large export; H3 packaging).
 
 (export aether:observe
         aether:decide

@@ -1,14 +1,9 @@
-; lib/aether-measure.aura — Axis F surface (documentation / narrow pre-rebind use)
+; lib/aether-measure.aura — Axis F: metrology (authoritative)
 ;
 ; (require "aether-measure" all:)
 ;
-; NOTE: For closed-loop work that mutates the workspace, prefer
-; (require "aether-min" all:) — host free-vars for module-private stats
-; state break across set-code/rebind when stats live in a *separate* module.
-; aether-min embeds Axis F so post-rebind metrology stays dense in V_A.
-;
-; This module remains for axis-shaped imports in tools that only observe
-; before any install-source / rebind.
+; Post-rebind stats cells are stable on current host (H4 residual improved).
+; Closed-loop demos may require this module alone or via aether-min facade.
 
 (export aether:stats
         aether:stats-reset!

@@ -1,17 +1,15 @@
-; lib/aether-min.aura — Closed-loop surface (Axes A + B + F)
+; lib/aether-min.aura — Closed-loop facade (Axes A + B + F)
 ;
 ; (require "aether-min" all:)
 ;
-; Layout after axis split:
-;   aether-measure         Axis F (narrow / pre-rebind; see file note)
-;   aether-mutate-policy   Axis B — required + re-exported here
-;   aether-loop            Axis A O/D/V helpers (narrow)
-;   aether-min             embeds F + loop-once + re-exports B
-;                          (host: post-rebind free-vars must be same-module
-;                          for stats + loop-once; do not require measure
-;                          for the live closed-loop path)
+; Thin re-export of axis modules (H3/H4 extract landed):
+;   aether-measure       Axis F — stats / alist-ref
+;   aether-mutate-policy Axis B — install / safety / rebind
+;   aether-loop          Axis A — observe / decide / verify
+;   aether-loop-once     Axis A — loop-once (sole large export)
 ;
-; Host fixes used: #2566 #2567 #2568 #2569 #2570
+; Host: loop-once must stay a single-export module (H3). Stats live in
+; aether-measure and survive rebind on current host (H4 improved).
 
 (export aether:install-source
         aether:stats aether:stats-reset! aether:stats-ref aether:stats-bump!
@@ -20,115 +18,9 @@
         aether:observe aether:decide aether:verify
         aether:loop-once aether:min-version)
 
-(require "std/list" all:)
-(require "std/mutate" all:)
+(require "aether-measure" all:)
 (require "aether-mutate-policy" all:)
+(require "aether-loop" all:)
+(require "aether-loop-once" all:)
 
-(define aether:min-version 2)
-
-; ── Axis F embedded (same-module as loop-once) ───────────────
-
-(define *aether-stats*
-  (hash "rounds" 0
-        "commits" 0
-        "rollbacks" 0
-        "verify-fail" 0
-        "observe-calls" 0
-        "decide-mutate" 0
-        "decide-skip" 0
-        "escapes" 0))
-
-(define (aether:stats)
-  *aether-stats*)
-
-(define (aether:stats-reset!)
-  (hash-set! *aether-stats* "rounds" 0)
-  (hash-set! *aether-stats* "commits" 0)
-  (hash-set! *aether-stats* "rollbacks" 0)
-  (hash-set! *aether-stats* "verify-fail" 0)
-  (hash-set! *aether-stats* "observe-calls" 0)
-  (hash-set! *aether-stats* "decide-mutate" 0)
-  (hash-set! *aether-stats* "decide-skip" 0)
-  (hash-set! *aether-stats* "escapes" 0)
-  *aether-stats*)
-
-(define (aether:stats-ref key)
-  (let ((v (hash-ref *aether-stats* key 0)))
-    (if (number? v) v 0)))
-
-(define (aether:stats-bump! key)
-  (let ((n (+ 1 (aether:stats-ref key))))
-    (hash-set! *aether-stats* key n)
-    n))
-
-(define (aether:stats-alist)
-  (list (cons "rounds" (aether:stats-ref "rounds"))
-        (cons "commits" (aether:stats-ref "commits"))
-        (cons "rollbacks" (aether:stats-ref "rollbacks"))
-        (cons "verify-fail" (aether:stats-ref "verify-fail"))
-        (cons "observe-calls" (aether:stats-ref "observe-calls"))
-        (cons "decide-mutate" (aether:stats-ref "decide-mutate"))
-        (cons "decide-skip" (aether:stats-ref "decide-skip"))
-        (cons "escapes" (aether:stats-ref "escapes"))))
-
-(define (aether:alist-ref key lst default)
-  (let ((xs lst))
-    (let loop ((ys xs))
-      (cond ((null? ys) default)
-            ((equal? (car (car ys)) key) (cdr (car ys)))
-            (else (loop (cdr ys)))))))
-
-; ── Axis A embedded ──────────────────────────────────────────
-
-(define (aether:observe probe)
-  (aether:stats-bump! "observe-calls")
-  (try (probe) (catch (e) (list 'error e))))
-
-(define (aether:decide need-mutate?)
-  (if (need-mutate?)
-    (begin (aether:stats-bump! "decide-mutate") 'mutate)
-    (begin (aether:stats-bump! "decide-skip") 'skip)))
-
-(define (aether:verify check)
-  (try (eq? (check) #t) (catch (e) #f)))
-
-(define (aether:loop-once observe-probe need-mutate? name body summary verify-check)
-  (aether:stats-bump! "rounds")
-  (let ((obs (aether:observe observe-probe)))
-    (let ((dec (aether:decide need-mutate?)))
-      (if (eq? dec 'skip)
-        (list (cons ":ok" #t)
-              (cons ":decision" 'skip)
-              (cons ":observation" obs)
-              (cons ":reason" "no-mutate-needed")
-              (cons ":snap" -1))
-        (let ((mut (aether:rebind-safe name body summary)))
-          (let ((mut-ok (aether:alist-ref ":ok" mut #f)))
-            (let ((snap (aether:alist-ref ":snap" mut -1)))
-              (let ((mreason (aether:alist-ref ":reason" mut "refuse")))
-                (if (not mut-ok)
-                  (begin
-                    (aether:stats-bump! "rollbacks")
-                    (list (cons ":ok" #f)
-                          (cons ":decision" 'refuse)
-                          (cons ":observation" obs)
-                          (cons ":reason" mreason)
-                          (cons ":snap" snap)))
-                  (let ((raw (try (verify-check) (catch (e) #f))))
-                    (if (eq? raw #t)
-                      (begin
-                        (aether:stats-bump! "commits")
-                        (list (cons ":ok" #t)
-                              (cons ":decision" 'commit)
-                              (cons ":observation" obs)
-                              (cons ":reason" "verified")
-                              (cons ":snap" snap)))
-                      (begin
-                        (aether:stats-bump! "verify-fail")
-                        (aether:stats-bump! "rollbacks")
-                        (aether:restore snap)
-                        (list (cons ":ok" #f)
-                              (cons ":decision" 'rollback)
-                              (cons ":observation" obs)
-                              (cons ":reason" "verify-failed")
-                              (cons ":snap" snap)))))))))))))))
+(define aether:min-version 3)

@@ -123,10 +123,11 @@ Phase highlights:
 | 3 | 06–09 propose \(E\); 10–14 N-stress; 11–12 orch; axis split; 13 multi-tenant; CI; final report |
 | 4 | 15 version coexist; 16 drift freeze; 17 true parallel fanout |
 
-### Upstream-blocked (see `notes/host-residuals.md`)
+### Upstream-blocked / remaining (see `notes/host-residuals.md`)
 
-- True fiber parallel when H5/H6 fixed  
-- Extract A+F from `aether-min` when H3/H4 fixed  
+- Multi-bind `let` (H1 / #2580)  
+- Official hot-strategy surface (H7 / #2582)  
+- Multi-export large define (H3 packaging rule remains; sole-export OK) 
 
 ### Not Aether’s job alone
 

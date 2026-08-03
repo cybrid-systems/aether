@@ -95,13 +95,15 @@ Wire format (live/stub): `MUTATE|name|body|summary` or `SKIP|name||summary`.
 
 | Lib | Role |
 |-----|------|
-| `aether-min` | Closed-loop facade; embeds A+F for post-rebind metrology |
+| `aether-min` | Thin facade re-export (`min-version` 3) |
+| `aether-measure` | Axis F stats (authoritative) |
 | `aether-mutate-policy` | Axis B install / safety / rebind |
+| `aether-loop` | Axis A observe/decide/verify |
+| `aether-loop-once` | Axis A `loop-once` (sole large export) |
 | `aether-domain` | Shared admit-gate workload |
 | `aether-propose` | Schema, wire, rule/stub/live propose |
-| `aether-orch` | Arbitrate + fanout-with-yield |
+| `aether-orch` | Arbitrate + dual-mode fanout |
 | `aether-region` | Multi-tenant named gates |
-| `aether-measure` / `aether-loop` | Narrow axis imports (pre-rebind) |
 
 Details: [lib/README.md](../lib/README.md).
 
@@ -115,9 +117,9 @@ Actionable table + Aura issues: [host-residuals.md](host-residuals.md)
 
 1. Sequential `let`; multi-binding `let` can mis-bind.  
 2. Verify with `(eq? x #t)`.  
-3. Large trailing `define` may fail to export.  
-4. Cross-module free-vars break after rebind → embed A+F in `aether-min`.  
-5. Fiber / `orch:parallel` issues → `sequential-yield` fanout.  
+3. Large trailing `define` in multi-export modules may fail → sole-export `aether-loop-once`.  
+4. Cross-module stats (H4) improved — `aether-measure` survives rebind (2026-08-03).  
+5. Fiber residual → dual-mode `aether:fanout` (17 requires parallel).  
 6. `std/hot-update` AOT-oriented → strategy rebind (04).
 
 ---
@@ -152,7 +154,8 @@ denseness for numerical kernels, hard realtime, drivers, or arbitrary product do
 | 3 | Propose E, schema/wire/live, N=50–100, orch, yield, axis split, multi-tenant, CI | **Landed** |
 | 4 | Version coexistence (15); drift freeze (16) | **Landed** |
 | 4b | True parallel fanout (17) when host orch healthy | **Landed** |
-| Upstream-blocked | Full A+F extract; residual free-var cases | [host-residuals.md](host-residuals.md) |
+| 5 | A+F extract to axis modules (min facade v3) | **Landed** |
+| Upstream-blocked | Multi-bind let; hot-update surface; H3 multi-export | [host-residuals.md](host-residuals.md) |
 
 ---
 

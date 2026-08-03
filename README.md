@@ -134,10 +134,11 @@ aether/
 ├── prompts/
 │   └── GROK.md              # Living prompt for continued generation
 ├── lib/
-│   ├── aether-min.aura         # A+B+F closed-loop facade (embeds A+F)
+│   ├── aether-min.aura         # Thin A+B+F facade (v3)
 │   ├── aether-mutate-policy.aura  # Axis B
-│   ├── aether-measure.aura     # Axis F (narrow / pre-rebind)
-│   ├── aether-loop.aura        # Axis A O/D/V helpers
+│   ├── aether-measure.aura     # Axis F stats
+│   ├── aether-loop.aura        # Axis A O/D/V
+│   ├── aether-loop-once.aura   # Axis A loop-once (sole export)
 │   ├── aether-propose.aura     # Propose edge (rule / stub / live)
 │   ├── aether-domain.aura      # Shared gate workload
 │   ├── aether-orch.aura        # Multi-propose arbiter + yield fanout (C)

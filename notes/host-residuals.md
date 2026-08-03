@@ -23,8 +23,8 @@ Earlier wave (closed, partial fix): [#2566](https://github.com/cybrid-systems/au
 |----|---------|-------------------|-----------------|
 | H1 | Multi-binding `let` mis-binds | Sequential `let` only | #2580 |
 | H2 | Verify needs `(eq? x #t)` | Documented convention | docs |
-| H3 | Large trailing `define` fails to export | Keep `loop-once` on `aether-min` facade | #2579 |
-| H4 | Cross-module free-vars / private cells die after `set-code`+rebind | Embed stats+loop in `aether-min`; inline public entries | #2579 |
+| H3 | Large trailing `define` fails to export | `aether-loop-once` sole export (not multi-export) | #2579 |
+| H4 | Cross-module free-vars / private cells die after `set-code`+rebind | Improved: stats in `aether-measure` survive rebind (2026-08-03) | #2579 |
 | H5 | `fiber:spawn` workers mis-capture closures | sequential fallback; **17** uses orch when healthy | #2581 |
 | H6 | `orch:parallel` free-var after rebind (`orch-yield-safe`) | `aether:fanout` tries parallel then sequential; **17** requires parallel | #2581 |
 | H7 | `std/hot-update` AOT `.so` oriented | Strategy rebind (example 04) | #2582 |
@@ -33,7 +33,7 @@ Earlier wave (closed, partial fix): [#2566](https://github.com/cybrid-systems/au
 ## When fixed, Aether follow-ups
 
 1. **#2581 (H5+H6)** → Aether **17** landed (`aether:fanout` dual-mode; keep issue open for host permanence).  
-2. **#2579 (H3+H4+H8)** → extract A+F fully into `aether-measure` / `aether-loop`.  
+2. **#2579 (H3+H4+H8)** → A+F extract landed: `aether-measure` + `aether-loop` + `aether-loop-once`; min is facade v3. H3 packaging rule remains (sole large export).  
 3. **#2580 (H1)** → simplify probe style (multi-bind `let` allowed).  
 4. **#2582 (H7)** → optional official hot-strategy surface in example 04.
 
