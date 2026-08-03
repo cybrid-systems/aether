@@ -10,7 +10,8 @@
 #
 # Usage:
 #   ./scripts/overnight-mutate.sh
-#     → live defaults = max pressure (sleep=0, agents=60, parallel_jobs=16)
+#     → live max: sleep=0, 60 agents/process × 64 processes ≈ 3840 concurrent agents,
+#       long context (~16k chars/call), continuous until 08:00
 #   # gentle smoke:
 #   AETHER_OVERNIGHT_SCHEDULE=duration AETHER_OVERNIGHT_MAX_MINUTES=3 \
 #     AETHER_OVERNIGHT_MAX_PROPOSES=2 AETHER_OVERNIGHT_PARALLEL_JOBS=1 \
@@ -27,19 +28,18 @@ RESET_HOUR="${AETHER_OVERNIGHT_RESET_HOUR:-0}"
 WINDOW_HOURS="${AETHER_OVERNIGHT_WINDOW_HOURS:-8}"
 PEAK_ONLY="${AETHER_OVERNIGHT_PEAK_ONLY:-0}"
 # ── DEFAULTS = MAXIMUM PRESSURE ──────────────────────────────
-# Continuous full-blast: no sleep, max agents, max parallel aura jobs.
-# Override env only when you intentionally want to throttle.
+# Thousands of agents via (parallel_jobs × agents_per_process).
+# Per-process agent fanout capped ~60 (host arbitrate limit); scale via jobs.
+# Long context: AETHER_LLM_CONTEXT_CHARS pads propose-edge prompts.
 MAX_PROPOSES="${AETHER_OVERNIGHT_MAX_PROPOSES:-9999}"
 SLEEP_SEC="${AETHER_OVERNIGHT_SLEEP_SEC:-0}"
 SLEEP_MIN="${AETHER_OVERNIGHT_SLEEP_MIN:-0}"
 SLEEP_MAX="${AETHER_OVERNIGHT_SLEEP_MAX:-0}"   # 0 = never add sleep on backoff
 MAX_MINUTES="${AETHER_OVERNIGHT_MAX_MINUTES:-}"
 
-# Multi-process shell fanout (each job = full aura driver with N fiber agents).
 PARALLEL_JOBS="${AETHER_OVERNIGHT_PARALLEL_JOBS:-}"
 
-# Always start at MAX agents. Adaptive only trims on hard failure then re-ramps.
-# Host/arbitrate stable through ~60 agents; 64 returns picked=#f (refuse).
+# Per-process agent count (fiber fanout inside each aura process).
 AGENTS_MIN="${AETHER_OVERNIGHT_AGENTS_MIN:-16}"
 AGENTS_MAX="${AETHER_OVERNIGHT_AGENTS_MAX:-60}"
 AGENTS_STEP_UP="${AETHER_OVERNIGHT_AGENTS_STEP_UP:-8}"
@@ -59,6 +59,10 @@ PEAK_AGENTS_SEEN=$AGENTS_CUR
 BACKOFF_N=0
 RAMP_N=0
 
+# Long context for live propose (chars of system+user pad). 0 = short (suite).
+# Default ~16k chars each side path → multi-k tokens, still one-shot (no multi-turn).
+export AETHER_LLM_CONTEXT_CHARS="${AETHER_LLM_CONTEXT_CHARS:-16384}"
+
 DRIVER="${AETHER_OVERNIGHT_DRIVER:-examples/22-overnight-mutate/main.aura}"
 ANOMALY_LOG="${AETHER_ANOMALY_LOG:-$ROOT/notes/aura-anomaly-log.md}"
 RUN_LOG="${AETHER_OVERNIGHT_LOG:-$ROOT/notes/.overnight-run.log}"
@@ -74,15 +78,25 @@ if [[ -z "${AETHER_LLM_PROPOSE:-}" ]]; then
 fi
 
 # Default parallel aura processes: max for live, single for stub (CI-friendly).
+# 64 jobs × 60 agents ≈ 3840 concurrent propose agents per wave batch.
 if [[ -z "$PARALLEL_JOBS" ]]; then
   if [[ "${AETHER_LLM_PROPOSE}" == "live" ]]; then
-    PARALLEL_JOBS=16
+    PARALLEL_JOBS=64
   else
     PARALLEL_JOBS=1
   fi
 fi
 if (( PARALLEL_JOBS < 1 )); then PARALLEL_JOBS=1; fi
-if (( PARALLEL_JOBS > 32 )); then PARALLEL_JOBS=32; fi
+if (( PARALLEL_JOBS > 128 )); then PARALLEL_JOBS=128; fi
+
+# Stub/offline suite path: keep short prompts (fast, no token burn).
+if [[ "${AETHER_LLM_PROPOSE}" != "live" ]]; then
+  export AETHER_LLM_CONTEXT_CHARS=0
+fi
+
+LOGICAL_AGENTS=$(( PARALLEL_JOBS * AGENTS_CUR ))
+echo "overnight-mutate: logical concurrent agents ≈ ${LOGICAL_AGENTS} (= ${PARALLEL_JOBS} jobs × ${AGENTS_CUR} agents/job)" >&2
+echo "overnight-mutate: LLM context chars ≈ ${AETHER_LLM_CONTEXT_CHARS} (0=short)" >&2
 
 AURA_BIN="${AURA_BIN:-$ROOT/../aura-grok/build/aura}"
 AETHER_SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -237,8 +251,8 @@ OVERNIGHT SESSION
   adaptive:       $ADAPTIVE  agents=${AGENTS_CUR} (min=$AGENTS_MIN max=$AGENTS_MAX step_up=$AGENTS_STEP_UP step_down=$AGENTS_STEP_DOWN)
   parallel_jobs:  $PARALLEL_JOBS concurrent aura processes × agents (fiber fanout inside each)
   mode:           $AETHER_LLM_PROPOSE
-  pressure:       continuous full-blast (sleep=0); fiber parallel agents; multi-process shell fanout
-  est_live_max:   ~$((MAX_PROPOSES * AGENTS_MAX * 6 * PARALLEL_JOBS)) (inv × agents × waves × jobs)
+  pressure:       MAX — ~$((PARALLEL_JOBS * AGENTS_CUR)) concurrent agents; ctx=${AETHER_LLM_CONTEXT_CHARS} chars; sleep=0
+  est_live_max:   ~$((MAX_PROPOSES * AGENTS_MAX * 6 * PARALLEL_JOBS)) calls (inv × agents × waves × jobs)
   logs:
     run_log:      $RUN_LOG
     anomaly_log:  $ANOMALY_LOG
@@ -365,7 +379,7 @@ while true; do
 
   {
     echo "======== INVOCATION $invocations / $MAX_PROPOSES  session=$SESSION_ID  utc=$inv_ts  ~${rem_m}m left ========"
-    echo "PRESSURE agents=$AGENTS_CUR jobs=$PARALLEL_JOBS sleep=${SLEEP_SEC}s adaptive=$ADAPTIVE peak_seen=$PEAK_AGENTS_SEEN est_llm_calls≈$((est_calls * PARALLEL_JOBS)) (agents×waves×jobs)"
+    echo "PRESSURE agents=$AGENTS_CUR jobs=$PARALLEL_JOBS logical_agents=$((PARALLEL_JOBS * AGENTS_CUR)) ctx=${AETHER_LLM_CONTEXT_CHARS} sleep=${SLEEP_SEC}s adaptive=$ADAPTIVE peak_seen=$PEAK_AGENTS_SEEN est_llm_calls≈$((est_calls * PARALLEL_JOBS))"
     echo "AETHER_SHA=$AETHER_SHA AURA_SHA=$AURA_SHA MODE=$AETHER_LLM_PROPOSE"
   } | tee -a "$RUN_LOG"
 

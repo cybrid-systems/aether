@@ -1,119 +1,78 @@
 # 22 — Overnight multi-agent fanout stress (Phase 5)
 
-**Aether issue #4.** Budget-bounded continuous mutation under **multi-agent
-sandbox propose fanout**. Mutates denseness domain `gate` only (not mainline
-`lib/aether-*`). Long runs: `scripts/overnight-mutate.sh`.
+**Aether issue #4.** Continuous max-pressure propose-edge stress under live LLM.
+Mutates denseness domain `gate` only (not mainline `lib/aether-*`).
 
-## Pressure shape (adaptive multi-agent)
-
-Each driver invocation (agent count **N** from env / harness):
-
-```
-N agents ──aether:fanout──► (parallel-yield when live) ──► pure-Aura arbiter
-                                                         ──► single executor
-× 6 waves  (+ forced poison rollback)
-≈ N×6 short llm:chat when live
-```
-
-**Harness default = maximum pressure** (`./scripts/overnight-mutate.sh` alone):
-
-```
-sleep=0
-agents=60 (host-stable max; 64 arbiter returns #f)
-parallel_jobs=16 concurrent aura processes (live)
-  each: 60 fiber agents × 6 waves (orch:parallel-with-yield preferred)
-  ≈ 16 × 60 × 6 = 5760 short LLM calls per batch
-
-on hard fail only → brief agent trim, re-ramp to max; sleep stays 0
-until clock stop (next 08:00)
-```
-
-| Mode | Propose pressure |
-|------|------------------|
-| **live** | max multi-process × multi-fiber, continuous |
-| **stub/offline** | single job; suite uses `AETHER_OVERNIGHT_AGENTS=6` |
-
-Invariants (unchanged denseness shape):
-
-- LLM only on **propose edge**
-- **Single mutator** after collect (no concurrent rebind)
-- Schema/wire + verify/rollback still gate bad proposals
-- Prefer `parallel-yield`; host residual → `sequential-yield`
-
-## MiniMax clock stop (default)
-
-Hard stop = **next 08:00** `Asia/Shanghai` (window 00:00–08:00).
-
-```
-now ──► 00:00 reset ──► 08:00 STOP
-```
+## Default = maximum pressure
 
 ```bash
 ./scripts/overnight-mutate.sh
+```
+
+| Knob | Default (live) | Meaning |
+|------|----------------|---------|
+| sleep | **0** | continuous, no cooldown |
+| agents / process | **60** | fiber fanout per aura process (host-stable max) |
+| parallel_jobs | **64** | concurrent aura processes |
+| **logical agents** | **≈ 3840** | `64 × 60` concurrent proposers / wave |
+| context | **16384 chars** | long one-shot system+user pad on propose edge |
+| waves / process | 6 | denseness O→D→M waves + poison rollback |
+| est LLM calls / batch | **≈ 23040** | `64 × 60 × 6` if every agent live-calls |
+| hard stop | next **08:00** Asia/Shanghai | plan window |
+
+Per-process agent fanout is capped ~60 (arbitrate returns `#f` at 64). **Thousands
+of agents** are achieved by multi-process shell fanout × per-process fiber agents.
+
+```
+64 aura processes ──each──► 60 fiber agents ──parallel-yield──► pure-Aura arbiter
+                             × 6 waves                          ──► single executor
+≈ 3840 concurrent propose agents / wave; long context per llm:chat
+```
+
+## Long context
+
+Env `AETHER_LLM_CONTEXT_CHARS` (default **16384** for live overnight):
+
+- Pads system + user prompts with denseness policy context (still **one-shot**,
+  no multi-turn history — does not fill MiniMax 1M accidentally).
+- Wire line still required at end: `MUTATE|…` / `SKIP|…`.
+- Offline suite forces `0` (short prompts).
+
+Raise further if desired:
+
+```bash
+AETHER_LLM_CONTEXT_CHARS=48000 ./scripts/overnight-mutate.sh
 ```
 
 ## Smoke (offline, in `run-all`)
 
 ```bash
 ./scripts/run-aura.sh examples/22-overnight-mutate/main.aura
-# expect: fan_rounds=6 props=36 mode=parallel-yield (or sequential-yield)
+# default agents=6, short context, no parallel jobs
 ```
 
-## Env
-
-| Env | Default | Meaning |
-|-----|---------|---------|
-| `AETHER_OVERNIGHT_SCHEDULE` | `minimax-0-5` | or `duration` |
-| `AETHER_OVERNIGHT_TZ` | `Asia/Shanghai` | clock TZ |
-| `AETHER_OVERNIGHT_WINDOW_HOURS` | `8` | stop at 08:00 |
-| `AETHER_OVERNIGHT_MAX_PROPOSES` | **`9999`** | essentially unbounded batches |
-| `AETHER_OVERNIGHT_SLEEP_SEC` | **`0`** | no cooldown |
-| `AETHER_OVERNIGHT_SLEEP_MAX` | **`0`** | never add sleep on backoff |
-| `AETHER_OVERNIGHT_PARALLEL_JOBS` | **`16` live / `1` stub** | concurrent aura processes |
-| `AETHER_OVERNIGHT_ADAPTIVE` | `1` | trim only on hard fail, re-ramp |
-| `AETHER_OVERNIGHT_AGENTS` | **`60`** | start at max |
-| `AETHER_OVERNIGHT_AGENTS_MIN` | `16` | floor after backoff |
-| `AETHER_OVERNIGHT_AGENTS_MAX` | **`60`** | ceiling (host-stable) |
-| `AETHER_OVERNIGHT_AGENTS_STEP_UP` | `8` | re-ramp step |
-| `AETHER_OVERNIGHT_AGENTS_STEP_DOWN` | `8` | −N on hard fail |
-| `AETHER_LLM_PROPOSE` | live if key | `live` / `stub` / `rule` |
-
-Rough live per batch: `16 × 60 × 6 ≈ 5760` short one-shots.
-
-Log lines: `PRESSURE agents=… jobs=…` / `PRESSURE_NEXT` / `WAVE mode=parallel-yield`.
-
-### Context (1M)
-
-Each call is still a **fresh one-shot** (system + user, hundreds of tokens).
-No multi-turn history; 1M window is not accumulated.
-
-## Logs (for filing issues)
-
-| Artifact | Path | Use |
-|----------|------|-----|
-| Session stream | `notes/.overnight-run.log` | full overnight console |
-| Per invocation | `notes/overnight-invocations/<session>-invNNNN.log` | **attach to Aura issue** |
-| Anomaly + repro | `notes/aura-anomaly-log.md` | FAIL/CRASH tables + paste-ready repro |
-
-Machine lines (grep-friendly):
-
-| Line | Meaning |
-|------|---------|
-| `LOG_META` / `LOG_CFG` | driver identity + agents/live |
-| `WAVE id=…` | per-wave mode, n, decision, picked |
-| `RESULT pass\|fail …` | suite-style outcome |
-| `DIAG batch=… stats=…` | denseness counters |
-| `ISSUE_HINT: …` | on FAIL only |
-| `INV_STATUS …` | harness per-inv status |
+## Throttle (only if you want gentler)
 
 ```bash
-grep -E '^(WAVE |RESULT |DIAG |INV_STATUS|error:)' notes/overnight-invocations/* | tail -40
+AETHER_OVERNIGHT_PARALLEL_JOBS=4 AETHER_OVERNIGHT_AGENTS=16 \
+  AETHER_LLM_CONTEXT_CHARS=2000 AETHER_OVERNIGHT_SLEEP_SEC=5 \
+  ./scripts/overnight-mutate.sh
 ```
 
-How to open issues: [aura-anomaly-log.md](../../notes/aura-anomaly-log.md).
+## Logs (filing issues)
+
+| Artifact | Path |
+|----------|------|
+| Session | `notes/.overnight-run.log` |
+| Per inv | `notes/overnight-invocations/<session>-invNNNN.log` |
+| Anomalies | `notes/aura-anomaly-log.md` |
+
+```bash
+grep -E 'PRESSURE|WAVE |RESULT |INV_STATUS' notes/.overnight-run.log | tail -40
+```
 
 ## Safety
 
-- Failed proposes never leave unverified rebinds.
-- Anomalies → `notes/aura-anomaly-log.md` with **repro block + log excerpt**.
-- Does **not** auto-push mutated mainline libraries.
+- Single mutator after arbiter (no concurrent rebind of core).
+- Schema/wire + verify/rollback still gate bad proposals.
+- Does not auto-mainline `lib/aether-*`.

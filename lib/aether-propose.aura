@@ -15,6 +15,9 @@
         aether:proposal-errors
         aether:parse-proposal-text
         aether:proposal-prompt
+        aether:proposal-prompt-long
+        aether:proposal-system-long
+        aether:context-chars
         aether:execute-proposal)
 
 (require "std/string" all:)
@@ -95,6 +98,55 @@
       (string-append (if (number? max-fails) (number->string max-fails) "0")
                      ". Body must only use x and numbers. Widen when over budget."))))
 
+; Target context size for long prompts (overnight stress). 0 / unset = short.
+(define (aether:context-chars)
+  (let ((v (getenv "AETHER_LLM_CONTEXT_CHARS")))
+    (if (or (void? v) (not (string? v)) (equal? v "") (equal? v "0"))
+      0
+      (let ((n (string->number v)))
+        (if (and (number? n) (> n 0)) n 0)))))
+
+; Pad string to at least target chars (for long-context stress; still one-shot).
+(define (aether-pad-to s target)
+  (if (or (not (string? s)) (not (number? target)) (<= target 0))
+    (if (string? s) s "")
+    (if (>= (string-length s) target)
+      s
+      (aether-pad-to
+        (string-append s
+          "\n[ctx] S_Aether denseness: Observe→Decide→SafeMutation→Verify→Rollback. "
+          "Pure Aura core; LLM only on propose edge. Gate policy on x in 1..10; "
+          "budget fails<=4. Prefer widen (lambda (x) (< x 7)) when over budget; "
+          "SKIP when healthy. Never emit gate/set!/define/require/eval in body. ")
+        target))))
+
+(define (aether:proposal-system-long)
+  (aether-pad-to
+    (string-append
+      "You are a denseness propose-edge agent for Aether on Aura Unify. "
+      "Your ONLY job is one structured wire line. No tools. No markdown fences. "
+      "Wire: MUTATE|gate|(lambda (x) (< x N))|short-summary  OR  SKIP|gate||short-summary. "
+      "N integer 1-10. Body may only reference x and numeric literals. "
+      "Widen when fail-count exceeds max-fails; otherwise SKIP is preferred. "
+      "Invalid bodies are refused by schema before rebind.")
+    (let ((c (aether:context-chars)))
+      (if (> c 200) (quotient c 3) 0))))
+
+(define (aether:proposal-prompt-long fails max-fails)
+  (let ((core (aether:proposal-prompt fails max-fails))
+        (c (aether:context-chars)))
+    (aether-pad-to
+      (string-append
+        "=== denseness observation ===\n"
+        core
+        "\n=== policy notes ===\n"
+        "Domain gate: admit-batch over integers 1..10. Strict body (lambda (x) (< x 4)) "
+        "often yields fails=7 (> budget 4). Widen body (lambda (x) (< x 7)) restores budget. "
+        "Deny body (lambda (x) #f) is filtered by pure-Aura arbiter. "
+        "You are one of many concurrent proposers; only one executor mutates.\n"
+        "=== end observation; reply with EXACTLY one wire line ===\n")
+      (if (> c 0) c 0))))
+
 (define (aether:parse-proposal-text text source)
   (if (not (string? text))
     #f
@@ -163,28 +215,35 @@
             "llm-live")
       (begin
         (require "std/llm" all:)
-        (let ((resp
-                (try
-                  (llm:chat
-                    "Reply with EXACTLY one line: MUTATE|gate|(lambda (x) (< x N))|summary OR SKIP|gate||summary. N integer 1-10. No other calls. No markdown."
-                    (aether:proposal-prompt fails max-fails))
-                  (catch (e) #f))))
-          (let ((text
-                  (if (string? resp)
-                    resp
-                    (if (hash? resp)
-                      (if (hash-ref resp "ok" #f)
-                        (let ((c (hash-ref resp "content" "")))
-                          (if (string? c) c ""))
-                        "")
-                      ""))))
-            (let ((parsed (aether:parse-proposal-text text "llm-live")))
-              (if (and (pair? parsed) (aether:proposal-valid? parsed))
-                parsed
-                (list (car fallback) (car (cdr fallback))
-                      (car (cdr (cdr fallback)))
-                      "llm-parse-fallback"
-                      "llm-live")))))))))
+        (let ((long? (> (aether:context-chars) 0)))
+          (let ((sys
+                  (if long?
+                    (aether:proposal-system-long)
+                    "Reply with EXACTLY one line: MUTATE|gate|(lambda (x) (< x N))|summary OR SKIP|gate||summary. N integer 1-10. No other calls. No markdown."))
+                (usr
+                  (if long?
+                    (aether:proposal-prompt-long fails max-fails)
+                    (aether:proposal-prompt fails max-fails))))
+            (let ((resp
+                    (try
+                      (llm:chat sys usr)
+                      (catch (e) #f))))
+              (let ((text
+                      (if (string? resp)
+                        resp
+                        (if (hash? resp)
+                          (if (hash-ref resp "ok" #f)
+                            (let ((c (hash-ref resp "content" "")))
+                              (if (string? c) c ""))
+                            "")
+                          ""))))
+                (let ((parsed (aether:parse-proposal-text text "llm-live")))
+                  (if (and (pair? parsed) (aether:proposal-valid? parsed))
+                    parsed
+                    (list (car fallback) (car (cdr fallback))
+                          (car (cdr (cdr fallback)))
+                          "llm-parse-fallback"
+                          "llm-live")))))))))))
 
 (define (aether:propose fails max-fails mode)
   (let ((pm (aether:propose-mode)))
