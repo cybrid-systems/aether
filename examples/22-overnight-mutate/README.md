@@ -65,8 +65,33 @@ invocation is live and the clock allows — usually less (latency + early stop).
 Each call is still a **fresh one-shot** (system + user, hundreds of tokens).
 No multi-turn history; 1M window is not accumulated.
 
+## Logs (for filing issues)
+
+| Artifact | Path | Use |
+|----------|------|-----|
+| Session stream | `notes/.overnight-run.log` | full overnight console |
+| Per invocation | `notes/overnight-invocations/<session>-invNNNN.log` | **attach to Aura issue** |
+| Anomaly + repro | `notes/aura-anomaly-log.md` | FAIL/CRASH tables + paste-ready repro |
+
+Machine lines (grep-friendly):
+
+| Line | Meaning |
+|------|---------|
+| `LOG_META` / `LOG_CFG` | driver identity + agents/live |
+| `WAVE id=…` | per-wave mode, n, decision, picked |
+| `RESULT pass\|fail …` | suite-style outcome |
+| `DIAG batch=… stats=…` | denseness counters |
+| `ISSUE_HINT: …` | on FAIL only |
+| `INV_STATUS …` | harness per-inv status |
+
+```bash
+grep -E '^(WAVE |RESULT |DIAG |INV_STATUS|error:)' notes/overnight-invocations/* | tail -40
+```
+
+How to open issues: [aura-anomaly-log.md](../../notes/aura-anomaly-log.md).
+
 ## Safety
 
 - Failed proposes never leave unverified rebinds.
-- Anomalies → `notes/aura-anomaly-log.md`.
+- Anomalies → `notes/aura-anomaly-log.md` with **repro block + log excerpt**.
 - Does **not** auto-push mutated mainline libraries.
