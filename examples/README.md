@@ -30,6 +30,7 @@ Phase 1–3 offline suite includes N=100 soak (`./scripts/report.sh`). Judgment:
 | `16-drift-freeze` | Drift freeze mutation gate |
 | `17-true-parallel` | orch parallel-yield fanout (requires host) |
 | `18-multi-bind-let` | Multi-bind `let` after rebind (H1) |
+| `19-hot-strategy` | `std/hot-strategy` pure-Aura swap/heal (H7) |
 
 ## Live (not in run-all)
 

@@ -231,6 +231,7 @@ source ./scripts/env-minimax.sh
 | **16** | **Drift freeze** (refuse mutate while drifted) |
 | **17** | **True parallel** fanout (`orch:parallel-with-yield`) |
 | **18** | **Multi-bind let** after rebind (H1 regression) |
+| **19** | **`std/hot-strategy`** pure-Aura swap/heal (H7) |
 
 New probe: copy `examples/_template` → `examples/NN-name`, add to `run-all.sh` / `report.sh` if offline.
 

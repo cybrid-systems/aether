@@ -1,0 +1,122 @@
+; examples/19-hot-strategy/main.aura
+; H7 / Aura #2582: pure-Aura hot strategy via std/hot-strategy (not AOT .so).
+; Deploy → poison → heal to last-good snapshot; aot?=false.
+; Run: ./scripts/run-aura.sh examples/19-hot-strategy/main.aura
+
+(require "std/list" all:)
+(require "std/hot-strategy" all:)
+(require "aether-min" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether 19-hot-strategy: std/hot-strategy swap + heal ===")
+(newline)
+
+(define installed #f)
+(define reg #f)
+(define sw1 #f)
+(define sw-bad #f)
+(define healed #f)
+(define a-ok #f)
+(define b-ok #f)
+(define c-ok #f)
+(define d-ok #f)
+(define all-ok #f)
+
+(display "aot?=")
+(display (hot-strategy:aot?))
+(display " help=")
+(display (hot-strategy:help))
+(newline)
+
+(set! installed
+  (aether:install-source "(define strategy (lambda (x) (* x 2)))"))
+(set! reg (hot-strategy:register! "strategy" "(lambda (x) (* x 2))"))
+(display "R0 strategy(7)=")
+(display (strategy 7))
+(display " reg=")
+(write reg)
+(display " ver=")
+(display (hot-strategy:version))
+(newline)
+
+; ── A: seed + register ──
+(set! a-ok
+  (and installed
+       (not (hot-strategy:aot?))
+       (= (strategy 7) 14)
+       (pair? reg)
+       (eq? (car reg) #t)
+       (>= (hot-strategy:version) 1)))
+
+; ── B: hot swap to triple (verified) ──
+(set! sw1 (hot-strategy:swap! "strategy" "(lambda (x) (* x 3))" "deploy-triple"))
+(display "B swap=")
+(write sw1)
+(display " strategy(7)=")
+(display (strategy 7))
+(display " ver=")
+(display (hot-strategy:version))
+(newline)
+(set! b-ok
+  (and (pair? sw1)
+       (eq? (car sw1) #t)
+       (= (strategy 7) 21)
+       (>= (hot-strategy:version) 2)))
+
+; ── C: poison swap (rebind succeeds) then heal restores prior snap ──
+(set! sw-bad (hot-strategy:swap! "strategy" "(lambda (x) (* x 100))" "poison"))
+(display "C poison=")
+(write sw-bad)
+(display " strategy(7)=")
+(display (strategy 7))
+(newline)
+(set! healed (hot-strategy:heal!))
+(display "C heal=")
+(display healed)
+(display " strategy(7)=")
+(display (strategy 7))
+(newline)
+(set! c-ok
+  (and (pair? sw-bad)
+       (eq? (car sw-bad) #t)
+       healed
+       (= (strategy 7) 21)))
+
+; ── D: after heal, still pure-Aura surface + safety ──
+(set! d-ok
+  (and (not (hot-strategy:aot?))
+       (string? (hot-strategy:active-name))
+       (equal? (hot-strategy:active-name) "strategy")
+       (aether:safety-ok?)
+       (= (aether:stats-ref "escapes") 0)))
+
+(display "stats ")
+(write (aether:stats-alist))
+(newline)
+
+(set! all-ok (and a-ok b-ok c-ok d-ok))
+
+(if all-ok
+  (begin
+    (display "PASS: std/hot-strategy pure-Aura swap + heal (not AOT)")
+    (newline)
+    (display "escapes: 0; hot-strategy:aot?=false")
+    (newline)
+    (display "RESULT pass example=19-hot-strategy escapes=0 aot=0 ver=")
+    (display (hot-strategy:version))
+    (newline))
+  (begin
+    (display "FAIL: hot-strategy")
+    (newline)
+    (display " a-ok=")
+    (display a-ok)
+    (display " b-ok=")
+    (display b-ok)
+    (display " c-ok=")
+    (display c-ok)
+    (display " d-ok=")
+    (display d-ok)
+    (newline)
+    (display "RESULT fail example=19-hot-strategy")
+    (newline)))

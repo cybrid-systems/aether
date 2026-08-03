@@ -58,8 +58,9 @@ Aether does **not** claim denseness over all of \(S_{\mathrm{practical}}\).
 | [16-drift-freeze](../examples/16-drift-freeze/) | D A | PASS freeze on drift; heal unfreezes | 0 |
 | [17-true-parallel](../examples/17-true-parallel/) | C | PASS orch `parallel-yield` fanout after rebind | 0 |
 | [18-multi-bind-let](../examples/18-multi-bind-let/) | A B | PASS multi-bind `let` unpack after rebind (H1) | 0 |
+| [19-hot-strategy](../examples/19-hot-strategy/) | D | PASS `std/hot-strategy` swap + heal (not AOT) | 0 |
 
-Offline automation covers **01–08, 10–18**. Live **09** is opt-in.
+Offline automation covers **01–08, 10–19**. Live **09** is opt-in (auto MiniMax-M3 when key present).
 
 ---
 

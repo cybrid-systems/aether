@@ -52,4 +52,24 @@ export AURA_PATH="${AURA_PATH:-$AURA_LIB:$AETHER_LIB}"
 export AURA_SANDBOX="${AURA_SANDBOX:-off}"
 export AURA_PIPELINE_STRICT="${AURA_PIPELINE_STRICT:-0}"
 
+# Default MiniMax-M3 credentials from ~/code/keys/minimax when present.
+# Offline probes stay rule/stub; live example auto-enables AETHER_LLM_PROPOSE=live.
+_KEY_FILE="${MINIMAX_KEY_FILE:-$HOME/code/keys/minimax}"
+if [[ -z "${LLM_API_KEY:-}" && -f "$_KEY_FILE" ]]; then
+  _raw="$(tr -d '\r\n' < "$_KEY_FILE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  if [[ "$_raw" == *=* ]]; then
+    export LLM_API_KEY="${_raw#*=}"
+  else
+    export LLM_API_KEY="$_raw"
+  fi
+  unset _raw
+  export LLM_BASE_URL="${LLM_BASE_URL:-https://api.minimaxi.com/v1}"
+  export LLM_MODEL="${LLM_MODEL:-MiniMax-M3}"
+fi
+# Live probe defaults to live propose when key is available.
+if [[ "$SRC" == *live-minimax* && -n "${LLM_API_KEY:-}" ]]; then
+  export AETHER_LLM_PROPOSE="${AETHER_LLM_PROPOSE:-live}"
+fi
+unset _KEY_FILE
+
 exec "$AURA_BIN" < "$SRC"

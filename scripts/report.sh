@@ -27,6 +27,7 @@ EXAMPLES=(
   examples/16-drift-freeze/main.aura
   examples/17-true-parallel/main.aura
   examples/18-multi-bind-let/main.aura
+  examples/19-hot-strategy/main.aura
 )
 
 : >"$RAW"
