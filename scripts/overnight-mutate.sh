@@ -6,15 +6,14 @@
 #
 # ## MiniMax plan model (default schedule)
 #
-# Plan time is counted from local midnight (00:00); the useful high-quota
-# window is the next 5 hours (00:00–05:00), then it resets again at the next
-# 00:00 cycle.
+# Plan time is counted from local midnight (00:00). Default hard stop is
+# the next 08:00 (AETHER_OVERNIGHT_WINDOW_HOURS=8), so a late-night start
+# covers residual until reset then runs through early morning.
 #
 # Typical overnight session (e.g. start ~22:50):
-#   now ──► 00:00 (reset) ──► 05:00 (end of window)  STOP
-#   residual ~1h before reset + full 5h peak after.
+#   now ──► 00:00 (reset) ──► 08:00 (hard stop)  STOP
 #
-# Default schedule `minimax-0-5` sets the hard stop to the *next* 05:00 in
+# Default schedule `minimax-0-5` (name kept) stops at the *next* 08:00 in
 # AETHER_OVERNIGHT_TZ (default Asia/Shanghai). Secondary caps still apply:
 #   - AETHER_OVERNIGHT_MAX_PROPOSES (default 120)
 #   - AETHER_OVERNIGHT_SLEEP_SEC    (default 30)
@@ -38,9 +37,9 @@ cd "$ROOT"
 export TZ="${AETHER_OVERNIGHT_TZ:-Asia/Shanghai}"
 
 SCHEDULE="${AETHER_OVERNIGHT_SCHEDULE:-minimax-0-5}"
-# Window: [RESET_HOUR, RESET_HOUR+WINDOW_HOURS) e.g. 00:00–05:00
+# Window: [RESET_HOUR, RESET_HOUR+WINDOW_HOURS) e.g. 00:00–08:00 (stop next morning 8am)
 RESET_HOUR="${AETHER_OVERNIGHT_RESET_HOUR:-0}"
-WINDOW_HOURS="${AETHER_OVERNIGHT_WINDOW_HOURS:-5}"
+WINDOW_HOURS="${AETHER_OVERNIGHT_WINDOW_HOURS:-8}"
 PEAK_ONLY="${AETHER_OVERNIGHT_PEAK_ONLY:-0}"
 
 # Secondary caps (invocations / rate). MAX_MINUTES is optional extra ceiling.
@@ -73,7 +72,7 @@ next_midnight_ts() {
 }
 
 # next window end = next occurrence of (RESET_HOUR + WINDOW_HOURS):00
-# e.g. RESET=0 WINDOW=5 → next 05:00
+# e.g. RESET=0 WINDOW=8 → next 08:00
 next_window_end_ts() {
   local end_h=$((RESET_HOUR + WINDOW_HOURS))
   if (( end_h >= 24 )); then
