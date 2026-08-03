@@ -29,6 +29,7 @@ Phase 1–3 offline suite includes N=100 soak (`./scripts/report.sh`). Judgment:
 | `15-version-coexist` | Active + golden version coexistence |
 | `16-drift-freeze` | Drift freeze mutation gate |
 | `17-true-parallel` | orch parallel-yield fanout (requires host) |
+| `18-multi-bind-let` | Multi-bind `let` after rebind (H1) |
 
 ## Live (not in run-all)
 

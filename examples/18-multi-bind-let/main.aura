@@ -1,0 +1,121 @@
+; examples/18-multi-bind-let/main.aura
+; H1 follow-up: multi-binding let stable across install + rebind + unpack.
+; Host note: multi-bind *before* install-source can break module free-vars to
+; workspace names — pure multi-bind runs after seed.
+; Run: ./scripts/run-aura.sh examples/18-multi-bind-let/main.aura
+
+(require "std/list" all:)
+(require "aether-min" all:)
+(require "aether-domain" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether 18-multi-bind-let: multi-bind after rebind ===")
+(newline)
+
+(define installed #f)
+(define pure #f)
+(define r-loop #f)
+(define unpack #f)
+(define pack #f)
+(define a-ok #f)
+(define b-ok #f)
+(define c-ok #f)
+(define all-ok #f)
+
+; Seed first (module free-vars to `gate` need workspace present).
+(set! installed (aether:gate-install-strict))
+(display "R0 fails=")
+(display (aether:gate-fail-count))
+(newline)
+
+; ── A: pure multi-bind after install (independent bindings) ──
+(set! pure
+  (let ((a 1)
+        (b 2)
+        (c 3)
+        (d 4))
+    (list a b c d)))
+(display "A pure=")
+(write pure)
+(newline)
+(set! a-ok
+  (and installed
+       (equal? pure (list 1 2 3 4))
+       (= (aether:gate-fail-count) 7)))
+
+; ── B: loop-once commit + multi-bind unpack result ──
+(set! r-loop
+  (aether:loop-once
+    (lambda () (aether:gate-fail-count))
+    (lambda () #t)
+    "gate"
+    aether:gate-body-widen
+    "widen"
+    aether:gate-within-budget?))
+(set! unpack
+  (let ((ok (aether:alist-ref ":ok" r-loop #f))
+        (dec (aether:alist-ref ":decision" r-loop #f))
+        (snap (aether:alist-ref ":snap" r-loop -1))
+        (reason (aether:alist-ref ":reason" r-loop "")))
+    (list ok dec snap reason)))
+(display "B loop=")
+(write r-loop)
+(newline)
+(display "B unpack=")
+(write unpack)
+(newline)
+(set! b-ok
+  (and (eq? (car unpack) #t)
+       (eq? (car (cdr unpack)) 'commit)
+       (>= (car (cdr (cdr unpack))) 0)
+       (aether:gate-within-budget?)))
+
+; ── C: multi-bind unpack of rebind-safe (inner independent fields) ──
+(set! pack
+  (let ((mut (aether:rebind-safe "gate" aether:gate-body-widen "noop-widen")))
+    (let ((mut-ok (aether:alist-ref ":ok" mut #f))
+          (snap (aether:alist-ref ":snap" mut -1))
+          (reason (aether:alist-ref ":reason" mut "x"))
+          (mut-ok2 (aether:alist-ref ":mut-ok" mut #f)))
+      (list mut-ok snap reason mut-ok2))))
+(display "C pack=")
+(write pack)
+(newline)
+(set! c-ok
+  (and (eq? (car pack) #t)
+       (>= (car (cdr pack)) 0)
+       (string? (car (cdr (cdr pack))))
+       (eq? (car (cdr (cdr (cdr pack)))) #t)
+       (= (aether:gate-fail-count) 4)))
+
+(display "stats ")
+(write (aether:stats-alist))
+(newline)
+
+(set! all-ok
+  (and a-ok b-ok c-ok
+       (aether:safety-ok?)
+       (= (aether:stats-ref "escapes") 0)
+       (>= (aether:stats-ref "commits") 1)))
+
+(if all-ok
+  (begin
+    (display "PASS: multi-bind let after install/rebind (H1 regression)")
+    (newline)
+    (display "escapes: 0; multi-bind unpack matches sequential field access")
+    (newline)
+    (display "RESULT pass example=18-multi-bind-let escapes=0")
+    (newline))
+  (begin
+    (display "FAIL: multi-bind let")
+    (newline)
+    (display " a-ok=")
+    (display a-ok)
+    (display " b-ok=")
+    (display b-ok)
+    (display " c-ok=")
+    (display c-ok)
+    (newline)
+    (display "RESULT fail example=18-multi-bind-let")
+    (newline)))

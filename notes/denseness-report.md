@@ -57,8 +57,9 @@ Aether does **not** claim denseness over all of \(S_{\mathrm{practical}}\).
 | [15-version-coexist](../examples/15-version-coexist/) | D B | PASS active+golden coexist; poison active only | 0 |
 | [16-drift-freeze](../examples/16-drift-freeze/) | D A | PASS freeze on drift; heal unfreezes | 0 |
 | [17-true-parallel](../examples/17-true-parallel/) | C | PASS orch `parallel-yield` fanout after rebind | 0 |
+| [18-multi-bind-let](../examples/18-multi-bind-let/) | A B | PASS multi-bind `let` unpack after rebind (H1) | 0 |
 
-Offline automation covers **01–08, 10–17**. Live **09** is opt-in.
+Offline automation covers **01–08, 10–18**. Live **09** is opt-in.
 
 ---
 
@@ -115,7 +116,7 @@ Workarounds for CLI / packaging — claim is about \(S_{\mathrm{Aether}}\) seman
 Actionable table + Aura issues: [host-residuals.md](host-residuals.md)
 (tracker [#2578](https://github.com/cybrid-systems/aura/issues/2578); children #2579–#2582).
 
-1. Sequential `let`; multi-binding `let` can mis-bind.  
+1. Multi-binding `let` OK for independent bindings after seed (probe 18); avoid multi-bind *before* install-source (module free-var quirk).  
 2. Verify with `(eq? x #t)`.  
 3. Large trailing `define` in multi-export modules may fail → sole-export `aether-loop-once`.  
 4. Cross-module stats (H4) improved — `aether-measure` survives rebind (2026-08-03).  

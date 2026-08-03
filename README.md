@@ -230,6 +230,7 @@ source ./scripts/env-minimax.sh
 | **15** | **Version coexistence** (active + golden peer) |
 | **16** | **Drift freeze** (refuse mutate while drifted) |
 | **17** | **True parallel** fanout (`orch:parallel-with-yield`) |
+| **18** | **Multi-bind let** after rebind (H1 regression) |
 
 New probe: copy `examples/_template` → `examples/NN-name`, add to `run-all.sh` / `report.sh` if offline.
 

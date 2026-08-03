@@ -9,7 +9,7 @@ PASS paths use pure-Aura workarounds.
 | Aether ID | Aura issue | Title |
 |-----------|------------|--------|
 | tracker | [#2578](https://github.com/cybrid-systems/aura/issues/2578) | Host residual tracker (Phase 3 H1–H8) — open |
-| H1 | [#2580](https://github.com/cybrid-systems/aura/issues/2580) | Multi-binding `let` mis-binds — **open** |
+| H1 | [#2580](https://github.com/cybrid-systems/aura/issues/2580) | Multi-binding `let` — **closed**; Aether 18 + simplified loop-once |
 | H3/H4/H8 | [#2579](https://github.com/cybrid-systems/aura/issues/2579) | Module free-vars / export — **closed** (Aether A+F extract + sole-export rule) |
 | H5/H6 | [#2581](https://github.com/cybrid-systems/aura/issues/2581) | fiber/orch parallel — **closed** (Aether 17 dual-mode fanout) |
 | H7 | [#2582](https://github.com/cybrid-systems/aura/issues/2582) | hot-update AOT vs pure-Aura hot strategy — **open** |
@@ -21,7 +21,7 @@ Earlier wave (closed, partial fix): [#2566](https://github.com/cybrid-systems/au
 
 | ID | Symptom | Aether workaround | Upstream target |
 |----|---------|-------------------|-----------------|
-| H1 | Multi-binding `let` mis-binds | Sequential `let` only | #2580 |
+| H1 | Multi-binding `let` mis-binds | Independent multi-bind OK (18); sequential still fine | #2580 closed |
 | H2 | Verify needs `(eq? x #t)` | Documented convention | docs |
 | H3 | Large trailing `define` fails to export | `aether-loop-once` sole export (not multi-export) | #2579 |
 | H4 | Cross-module free-vars / private cells die after `set-code`+rebind | Improved: stats in `aether-measure` survive rebind (2026-08-03) | #2579 |
@@ -32,9 +32,9 @@ Earlier wave (closed, partial fix): [#2566](https://github.com/cybrid-systems/au
 
 ## When fixed, Aether follow-ups
 
-1. **#2581 (H5+H6)** → Aether **17** landed (`aether:fanout` dual-mode; keep issue open for host permanence).  
-2. **#2579 (H3+H4+H8)** → A+F extract landed: `aether-measure` + `aether-loop` + `aether-loop-once`; min is facade v3. H3 packaging rule remains (sole large export).  
-3. **#2580 (H1)** → simplify probe style (multi-bind `let` allowed).  
+1. **#2581 (H5+H6)** → Aether **17** landed.  
+2. **#2579 (H3+H4+H8)** → A+F extract landed; H3 sole-export rule remains.  
+3. **#2580 (H1)** → multi-bind OK; **18** regression + simplified `loop-once` unpack.  
 4. **#2582 (H7)** → optional official hot-strategy surface in example 04.
 
 ## Reproduce (local)
@@ -47,6 +47,6 @@ Earlier wave (closed, partial fix): [#2566](https://github.com/cybrid-systems/au
 ## Status
 
 - Filed on Aura 2026-08-02: #2578–#2582.  
-- **Closed 2026-08-03:** #2579 (A+F extract), #2581 (true parallel fanout).  
-- Still open: #2578 tracker, #2580 (H1 let), #2582 (H7 hot-update).  
-- No open Aether code blockers for denseness bar (16/16 offline).
+- **Closed:** #2579 (A+F), #2581 (parallel), #2580 (multi-bind let).  
+- Still open: #2578 tracker, #2582 (H7 hot-update).  
+- Denseness offline suite includes probe **18**.
