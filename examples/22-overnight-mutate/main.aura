@@ -1,11 +1,15 @@
 ; examples/22-overnight-mutate/main.aura
-; Phase 5 / issue #4: continuous mutation harness driver (budget-bounded).
+; Phase 5 / issue #4: multi-agent sandbox fanout stress (overnight driver).
 ;
-; Five closed-loop steps per invocation (shell overnight-mutate.sh re-invokes
-; under rate/budget for multi-minute / overnight runs).
-; Mutates domain gate only — never auto-mainlines lib/aether-*.aura.
+; Per invocation:
+;   - 6 concurrent propose agents via aether:fanout (parallel-yield preferred)
+;   - pure-Aura arbitrate → single executor
+;   - 6 fanout waves for propose-edge pressure (LLM when live)
+;   - forced poison rollback path
 ;
 ; Env: AETHER_LLM_PROPOSE=stub|live|rule
+;      AETHER_OVERNIGHT_AGENTS=6|8  (default 6; 8 only when live pressure)
+;
 ; Run: ./scripts/run-aura.sh examples/22-overnight-mutate/main.aura
 ; Overnight: ./scripts/overnight-mutate.sh
 
@@ -17,131 +21,118 @@
 
 (aether:stats-reset!)
 
-(display "=== Aether 22-overnight-mutate: budget-bounded continuous mutate ===")
+(display "=== Aether 22-overnight-mutate: multi-agent fanout stress ===")
 (newline)
 
+; Pre-allocate all cells before install/rebind.
 (define pm (aether:propose-mode))
 (define key (getenv "LLM_API_KEY"))
 (define use-live #f)
+(define agents-env (getenv "AETHER_OVERNIGHT_AGENTS"))
+(define n-agents 6)
 (define installed #f)
 (define commits 0)
 (define skips 0)
 (define rollbacks 0)
 (define refuses 0)
 (define anomalies 0)
+(define fan-rounds 0)
+(define total-props 0)
 (define all-ok #f)
-(define p-a #f)
-(define p-b #f)
+(define fails-now 0)
+(define fan #f)
+(define mode #f)
+(define props #f)
+(define yields #f)
 (define picked #f)
 (define exec-r #f)
 (define dec #f)
-(define fails-now 0)
+(define esc0 0)
+(define esc1 0)
 
 (set! use-live
   (and (equal? pm "live")
        (string? key)
        (> (string-length key) 0)))
 
-(display "max-rounds=5 propose-mode=")
+(if (and (string? agents-env) (equal? agents-env "8"))
+  (set! n-agents 8)
+  #f)
+(if (and (string? agents-env) (equal? agents-env "4"))
+  (set! n-agents 4)
+  #f)
+
+(display "n-agents=")
+(display n-agents)
+(display " propose-mode=")
 (display pm)
 (display " live?=")
 (display use-live)
+(display " fanout-mode(pre)=")
+(display (aether:fanout-mode))
 (newline)
 
 (set! installed (aether:gate-install-strict))
 (display "R0 batch=")
 (display (aether:gate-run-batch))
+(display " fails=")
+(display (aether:gate-fail-count))
 (newline)
 
-; ── helper: one step using top-level cells (no nested define/set! in let) ──
-; Round 0 — over budget: expect widen commit path via arbiter
+; ════════════════════════════════════════════════════════════
+; Wave 0 — over budget: 6-agent fanout (live=LLM each; stub=mixed)
+; ════════════════════════════════════════════════════════════
 (set! fails-now (aether:gate-fail-count))
-(aether:stats-bump! "escapes")
+(set! esc0 (aether:stats-ref "escapes"))
 (if use-live
-  (set! picked (aether:arbitrate (list (aether:propose fails-now 4 "auto")) (aether:gate-within-budget?)))
-  (begin
-    (set! p-a (list "mutate" "gate" "(lambda (x) (< x 7))" "night-widen" "llm-stub-A"))
-    (set! p-b (list "mutate" "gate" "(lambda (x) #f)" "night-rogue" "llm-stub-rogue"))
-    (set! picked (aether:arbitrate (list p-a p-b) (aether:gate-within-budget?)))))
+  (set! fan
+    (aether:fanout
+      (list
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto")))
+      fails-now))
+  (set! fan
+    (aether:fanout
+      (list
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (if (> f 4)
+            (list "mutate" "gate" "(lambda (x) (< x 7))" "w0-cons" "llm-stub-A")
+            (list "skip" "gate" "" "w0-cons-s" "llm-stub-A")))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (if (> f 3)
+            (list "mutate" "gate" "(lambda (x) (< x 7))" "w0-agg" "llm-stub-B")
+            (list "skip" "gate" "" "w0-agg-s" "llm-stub-B")))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (if (> f 2)
+            (list "mutate" "gate" "(lambda (x) (< x 7))" "w0-eager" "llm-stub-C")
+            (list "skip" "gate" "" "w0-eager-s" "llm-stub-C")))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "mutate" "gate" "(lambda (x) (< x 7))" "w0-force" "llm-stub-D"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "skip" "gate" "" "w0-peer" "llm-stub-E"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "mutate" "gate" "(lambda (x) #f)" "w0-rogue" "llm-stub-rogue")))
+      fails-now)))
+(set! mode (car fan))
+(set! props (car (cdr fan)))
+(set! yields (car (cdr (cdr fan))))
+(set! esc1 (aether:stats-ref "escapes"))
+(set! total-props (+ total-props (length props)))
+(set! fan-rounds (+ fan-rounds 1))
+(set! picked (aether:arbitrate props (aether:gate-within-budget?)))
 (set! exec-r
   (aether:execute-proposal
     picked
-    (lambda () (aether:gate-fail-count))
-    (lambda () (equal? (car picked) "mutate"))
-    aether:gate-within-budget?))
-(set! dec (aether:alist-ref ":decision" exec-r #f))
-(if (eq? dec 'commit) (set! commits (+ commits 1))
-  (if (eq? dec 'skip) (set! skips (+ skips 1))
-    (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
-      (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
-        (set! anomalies (+ anomalies 1))))))
-(display "round=0 fails=")
-(display (aether:gate-fail-count))
-(display " decision=")
-(display dec)
-(display " picked=")
-(write picked)
-(newline)
-
-; Round 1 — healthy skip
-(set! fails-now (aether:gate-fail-count))
-(aether:stats-bump! "escapes")
-(if use-live
-  (set! picked (aether:arbitrate (list (aether:propose fails-now 4 "auto")) (aether:gate-within-budget?)))
-  (begin
-    (set! p-a (list "skip" "gate" "" "night-skip" "llm-stub-A"))
-    (set! p-b (list "skip" "gate" "" "night-peer-skip" "llm-stub-B"))
-    (set! picked (aether:arbitrate (list p-a p-b) (aether:gate-within-budget?)))))
-(set! exec-r
-  (aether:execute-proposal
-    picked
-    (lambda () (aether:gate-fail-count))
-    (lambda () #f)
-    aether:gate-within-budget?))
-(set! dec (aether:alist-ref ":decision" exec-r #f))
-(if (eq? dec 'commit) (set! commits (+ commits 1))
-  (if (eq? dec 'skip) (set! skips (+ skips 1))
-    (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
-      (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
-        (set! anomalies (+ anomalies 1))))))
-(display "round=1 fails=")
-(display (aether:gate-fail-count))
-(display " decision=")
-(display dec)
-(newline)
-
-; Round 2 — skip again
-(set! fails-now (aether:gate-fail-count))
-(aether:stats-bump! "escapes")
-(if use-live
-  (set! picked (aether:arbitrate (list (aether:propose fails-now 4 "auto")) (aether:gate-within-budget?)))
-  (begin
-    (set! p-a (list "skip" "gate" "" "night-skip" "llm-stub-A"))
-    (set! p-b (list "mutate" "gate" "(lambda (x) #f)" "night-rogue" "llm-stub-rogue"))
-    (set! picked (aether:arbitrate (list p-a p-b) (aether:gate-within-budget?)))))
-(set! exec-r
-  (aether:execute-proposal
-    picked
-    (lambda () (aether:gate-fail-count))
-    (lambda () #f)
-    aether:gate-within-budget?))
-(set! dec (aether:alist-ref ":decision" exec-r #f))
-(if (eq? dec 'commit) (set! commits (+ commits 1))
-  (if (eq? dec 'skip) (set! skips (+ skips 1))
-    (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
-      (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
-        (set! anomalies (+ anomalies 1))))))
-(display "round=2 fails=")
-(display (aether:gate-fail-count))
-(display " decision=")
-(display dec)
-(newline)
-
-; Round 3 — force poison execute then expect rollback (exercises R path)
-(set! p-a (list "mutate" "gate" "(lambda (x) #f)" "night-poison" "llm-stub-poison"))
-(set! exec-r
-  (aether:execute-proposal
-    p-a
     (lambda () (aether:gate-fail-count))
     (lambda () #t)
     aether:gate-within-budget?))
@@ -151,21 +142,138 @@
     (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
       (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
         (set! anomalies (+ anomalies 1))))))
-(display "round=3 poison decision=")
+(display "W0 mode=")
+(display mode)
+(display " n=")
+(display (length props))
+(display " yields=")
+(display yields)
+(display " esc+")
+(display (- esc1 esc0))
+(display " decision=")
 (display dec)
 (display " fails=")
 (display (aether:gate-fail-count))
 (newline)
 
-; Round 4 — heal widen if needed
+; ════════════════════════════════════════════════════════════
+; Wave 1 — healthy multi-agent (skip-biased; live still N LLM calls)
+; ════════════════════════════════════════════════════════════
 (set! fails-now (aether:gate-fail-count))
-(aether:stats-bump! "escapes")
+(set! esc0 (aether:stats-ref "escapes"))
 (if use-live
-  (set! picked (aether:arbitrate (list (aether:propose fails-now 4 "auto")) (aether:gate-within-budget?)))
-  (begin
-    (set! p-a (list "mutate" "gate" "(lambda (x) (< x 7))" "night-heal" "llm-stub-A"))
-    (set! p-b (list "skip" "gate" "" "night-peer" "llm-stub-B"))
-    (set! picked (aether:arbitrate (list p-a p-b) (aether:gate-within-budget?)))))
+  (set! fan
+    (aether:fanout
+      (list
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto")))
+      fails-now))
+  (set! fan
+    (aether:fanout
+      (list
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "skip" "gate" "" "w1-a" "llm-stub-A"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "skip" "gate" "" "w1-b" "llm-stub-B"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "skip" "gate" "" "w1-c" "llm-stub-C"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (if (> f 4)
+            (list "mutate" "gate" "(lambda (x) (< x 7))" "w1-d" "llm-stub-D")
+            (list "skip" "gate" "" "w1-d-s" "llm-stub-D")))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "skip" "gate" "" "w1-e" "llm-stub-E"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "mutate" "gate" "(lambda (x) #f)" "w1-rogue" "llm-stub-rogue")))
+      fails-now)))
+(set! mode (car fan))
+(set! props (car (cdr fan)))
+(set! yields (car (cdr (cdr fan))))
+(set! esc1 (aether:stats-ref "escapes"))
+(set! total-props (+ total-props (length props)))
+(set! fan-rounds (+ fan-rounds 1))
+(set! picked (aether:arbitrate props (aether:gate-within-budget?)))
+(set! exec-r
+  (aether:execute-proposal
+    picked
+    (lambda () (aether:gate-fail-count))
+    (lambda () #f)
+    aether:gate-within-budget?))
+(set! dec (aether:alist-ref ":decision" exec-r #f))
+(if (eq? dec 'commit) (set! commits (+ commits 1))
+  (if (eq? dec 'skip) (set! skips (+ skips 1))
+    (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
+      (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
+        (set! anomalies (+ anomalies 1))))))
+(display "W1 mode=")
+(display mode)
+(display " n=")
+(display (length props))
+(display " esc+")
+(display (- esc1 esc0))
+(display " decision=")
+(display dec)
+(newline)
+
+; ════════════════════════════════════════════════════════════
+; Wave 2 — second concurrent stress wave
+; ════════════════════════════════════════════════════════════
+(set! fails-now (aether:gate-fail-count))
+(set! esc0 (aether:stats-ref "escapes"))
+(if use-live
+  (set! fan
+    (aether:fanout
+      (list
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto")))
+      fails-now))
+  (set! fan
+    (aether:fanout
+      (list
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (if (> f 4)
+            (list "mutate" "gate" "(lambda (x) (< x 7))" "w2-a" "llm-stub-A")
+            (list "skip" "gate" "" "w2-a-s" "llm-stub-A")))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (if (> f 3)
+            (list "mutate" "gate" "(lambda (x) (< x 7))" "w2-b" "llm-stub-B")
+            (list "skip" "gate" "" "w2-b-s" "llm-stub-B")))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "mutate" "gate" "(lambda (x) (< x 7))" "w2-c" "llm-stub-C"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "skip" "gate" "" "w2-d" "llm-stub-D"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "skip" "gate" "" "w2-e" "llm-stub-E"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "mutate" "gate" "(lambda (x) #f)" "w2-rogue" "llm-stub-rogue")))
+      fails-now)))
+(set! mode (car fan))
+(set! props (car (cdr fan)))
+(set! yields (car (cdr (cdr fan))))
+(set! esc1 (aether:stats-ref "escapes"))
+(set! total-props (+ total-props (length props)))
+(set! fan-rounds (+ fan-rounds 1))
+(set! picked (aether:arbitrate props (aether:gate-within-budget?)))
 (set! exec-r
   (aether:execute-proposal
     picked
@@ -178,8 +286,229 @@
     (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
       (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
         (set! anomalies (+ anomalies 1))))))
-(display "round=4 fails=")
+(display "W2 mode=")
+(display mode)
+(display " n=")
+(display (length props))
+(display " esc+")
+(display (- esc1 esc0))
+(display " decision=")
+(display dec)
+(newline)
+
+; ════════════════════════════════════════════════════════════
+; Wave 3 — poison-mix fanout + forced poison execute (rollback)
+; ════════════════════════════════════════════════════════════
+(set! fails-now (aether:gate-fail-count))
+(set! esc0 (aether:stats-ref "escapes"))
+(if use-live
+  (set! fan
+    (aether:fanout
+      (list
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto")))
+      fails-now))
+  (set! fan
+    (aether:fanout
+      (list
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "skip" "gate" "" "w3-a" "llm-stub-A"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "skip" "gate" "" "w3-b" "llm-stub-B"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "mutate" "gate" "(lambda (x) #f)" "w3-rogue1" "llm-stub-rogue"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "mutate" "gate" "(lambda (x) #f)" "w3-rogue2" "llm-stub-rogue"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "skip" "gate" "" "w3-e" "llm-stub-E"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "mutate" "gate" "(lambda (x) (< x 7))" "w3-f" "llm-stub-F")))
+      fails-now)))
+(set! mode (car fan))
+(set! props (car (cdr fan)))
+(set! yields (car (cdr (cdr fan))))
+(set! esc1 (aether:stats-ref "escapes"))
+(set! total-props (+ total-props (length props)))
+(set! fan-rounds (+ fan-rounds 1))
+(set! picked (aether:arbitrate props (aether:gate-within-budget?)))
+(set! exec-r
+  (aether:execute-proposal
+    picked
+    (lambda () (aether:gate-fail-count))
+    (lambda () #f)
+    aether:gate-within-budget?))
+(set! dec (aether:alist-ref ":decision" exec-r #f))
+(if (eq? dec 'commit) (set! commits (+ commits 1))
+  (if (eq? dec 'skip) (set! skips (+ skips 1))
+    (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
+      (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
+        (set! anomalies (+ anomalies 1))))))
+(display "W3 arb decision=")
+(display dec)
+(newline)
+; Force poison rebind to exercise rollback regardless of arbiter pick
+(set! exec-r
+  (aether:execute-proposal
+    (list "mutate" "gate" "(lambda (x) #f)" "night-poison" "llm-stub-poison")
+    (lambda () (aether:gate-fail-count))
+    (lambda () #t)
+    aether:gate-within-budget?))
+(set! dec (aether:alist-ref ":decision" exec-r #f))
+(if (eq? dec 'commit) (set! commits (+ commits 1))
+  (if (eq? dec 'skip) (set! skips (+ skips 1))
+    (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
+      (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
+        (set! anomalies (+ anomalies 1))))))
+(display "W3 poison-force decision=")
+(display dec)
+(display " fails=")
 (display (aether:gate-fail-count))
+(newline)
+
+; ════════════════════════════════════════════════════════════
+; Wave 4 — heal fanout (multi propose → single mutator restore)
+; ════════════════════════════════════════════════════════════
+(set! fails-now (aether:gate-fail-count))
+(set! esc0 (aether:stats-ref "escapes"))
+(if use-live
+  (set! fan
+    (aether:fanout
+      (list
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto")))
+      fails-now))
+  (set! fan
+    (aether:fanout
+      (list
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "mutate" "gate" "(lambda (x) (< x 7))" "w4-heal" "llm-stub-A"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "mutate" "gate" "(lambda (x) (< x 7))" "w4-heal2" "llm-stub-B"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "skip" "gate" "" "w4-c" "llm-stub-C"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "skip" "gate" "" "w4-d" "llm-stub-D"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "mutate" "gate" "(lambda (x) #f)" "w4-rogue" "llm-stub-rogue"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "mutate" "gate" "(lambda (x) (< x 7))" "w4-heal3" "llm-stub-F")))
+      fails-now)))
+(set! mode (car fan))
+(set! props (car (cdr fan)))
+(set! yields (car (cdr (cdr fan))))
+(set! esc1 (aether:stats-ref "escapes"))
+(set! total-props (+ total-props (length props)))
+(set! fan-rounds (+ fan-rounds 1))
+(set! picked (aether:arbitrate props (aether:gate-within-budget?)))
+(set! exec-r
+  (aether:execute-proposal
+    picked
+    (lambda () (aether:gate-fail-count))
+    (lambda () #t)
+    aether:gate-within-budget?))
+(set! dec (aether:alist-ref ":decision" exec-r #f))
+(if (eq? dec 'commit) (set! commits (+ commits 1))
+  (if (eq? dec 'skip) (set! skips (+ skips 1))
+    (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
+      (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
+        (set! anomalies (+ anomalies 1))))))
+(display "W4 heal mode=")
+(display mode)
+(display " n=")
+(display (length props))
+(display " esc+")
+(display (- esc1 esc0))
+(display " decision=")
+(display dec)
+(display " fails=")
+(display (aether:gate-fail-count))
+(newline)
+
+; ════════════════════════════════════════════════════════════
+; Wave 5 — extra concurrent pressure wave (overnight density)
+; ════════════════════════════════════════════════════════════
+(set! fails-now (aether:gate-fail-count))
+(set! esc0 (aether:stats-ref "escapes"))
+(if use-live
+  (set! fan
+    (aether:fanout
+      (list
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto"))
+        (lambda (f) (aether:stats-bump! "escapes") (aether:propose f 4 "auto")))
+      fails-now))
+  (set! fan
+    (aether:fanout
+      (list
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "skip" "gate" "" "w5-a" "llm-stub-A"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "skip" "gate" "" "w5-b" "llm-stub-B"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (if (> f 4)
+            (list "mutate" "gate" "(lambda (x) (< x 7))" "w5-c" "llm-stub-C")
+            (list "skip" "gate" "" "w5-c-s" "llm-stub-C")))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "skip" "gate" "" "w5-d" "llm-stub-D"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "skip" "gate" "" "w5-e" "llm-stub-E"))
+        (lambda (f)
+          (aether:stats-bump! "escapes")
+          (list "mutate" "gate" "(lambda (x) #f)" "w5-rogue" "llm-stub-rogue")))
+      fails-now)))
+(set! mode (car fan))
+(set! props (car (cdr fan)))
+(set! yields (car (cdr (cdr fan))))
+(set! esc1 (aether:stats-ref "escapes"))
+(set! total-props (+ total-props (length props)))
+(set! fan-rounds (+ fan-rounds 1))
+(set! picked (aether:arbitrate props (aether:gate-within-budget?)))
+(set! exec-r
+  (aether:execute-proposal
+    picked
+    (lambda () (aether:gate-fail-count))
+    (lambda () #f)
+    aether:gate-within-budget?))
+(set! dec (aether:alist-ref ":decision" exec-r #f))
+(if (eq? dec 'commit) (set! commits (+ commits 1))
+  (if (eq? dec 'skip) (set! skips (+ skips 1))
+    (if (eq? dec 'rollback) (set! rollbacks (+ rollbacks 1))
+      (if (eq? dec 'refuse) (set! refuses (+ refuses 1))
+        (set! anomalies (+ anomalies 1))))))
+(display "W5 mode=")
+(display mode)
+(display " n=")
+(display (length props))
+(display " esc+")
+(display (- esc1 esc0))
 (display " decision=")
 (display dec)
 (newline)
@@ -198,6 +527,12 @@
 (display refuses)
 (display " anomalies=")
 (display anomalies)
+(display " fan-rounds=")
+(display fan-rounds)
+(display " total-props=")
+(display total-props)
+(display " fanout-mode=")
+(display (aether:fanout-mode))
 (newline)
 (display "stats ")
 (write (aether:stats-alist))
@@ -206,26 +541,34 @@
 (display (aether:gate-run-batch))
 (newline)
 
+; 6 agents × 6 waves = 36 proposals; live ≈ 36 LLM calls / invocation
 (set! all-ok
   (and installed
        (aether:safety-ok?)
        (= anomalies 0)
-       (>= (+ commits skips rollbacks refuses) 5)
+       (>= fan-rounds 6)
+       (>= total-props 30)
+       (>= (aether:stats-ref "escapes") 30)
+       (>= (+ commits skips rollbacks refuses) 7)
        (>= rollbacks 1)
        (>= commits 1)))
 
 (if all-ok
   (begin
-    (display "PASS: overnight-mutate driver (budget-bounded; sandbox domain gate)")
+    (display "PASS: overnight multi-agent fanout stress (single mutator; sandbox gate)")
     (newline)
-    (display "RESULT pass example=22-overnight-mutate rounds=5 commits=")
+    (display "RESULT pass example=22-overnight-mutate agents=6 fan_rounds=")
+    (display fan-rounds)
+    (display " props=")
+    (display total-props)
+    (display " commits=")
     (display commits)
-    (display " skips=")
-    (display skips)
     (display " rollbacks=")
     (display rollbacks)
     (display " escapes=")
     (display (aether:stats-ref "escapes"))
+    (display " mode=")
+    (display (aether:fanout-mode))
     (display " live=")
     (display use-live)
     (newline))
@@ -236,8 +579,14 @@
     (display anomalies)
     (display " safety=")
     (display (aether:safety-ok?))
+    (display " fan-rounds=")
+    (display fan-rounds)
+    (display " props=")
+    (display total-props)
     (display " commits=")
     (display commits)
     (display " rollbacks=")
     (display rollbacks)
+    (display " escapes=")
+    (display (aether:stats-ref "escapes"))
     (newline)))

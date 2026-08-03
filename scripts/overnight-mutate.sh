@@ -43,10 +43,13 @@ WINDOW_HOURS="${AETHER_OVERNIGHT_WINDOW_HOURS:-8}"
 PEAK_ONLY="${AETHER_OVERNIGHT_PEAK_ONLY:-0}"
 
 # Secondary caps (invocations / rate). MAX_MINUTES is optional extra ceiling.
-MAX_PROPOSES="${AETHER_OVERNIGHT_MAX_PROPOSES:-120}"
-SLEEP_SEC="${AETHER_OVERNIGHT_SLEEP_SEC:-30}"
+# Driver does 6 agents × 6 fanout waves ≈ 36 live LLM calls per invocation.
+MAX_PROPOSES="${AETHER_OVERNIGHT_MAX_PROPOSES:-80}"
+SLEEP_SEC="${AETHER_OVERNIGHT_SLEEP_SEC:-20}"
 # Empty = no duration ceiling unless schedule=duration
 MAX_MINUTES="${AETHER_OVERNIGHT_MAX_MINUTES:-}"
+# Propagate agent count into driver (6 default; 8 for heavier live pressure)
+export AETHER_OVERNIGHT_AGENTS="${AETHER_OVERNIGHT_AGENTS:-6}"
 
 DRIVER="${AETHER_OVERNIGHT_DRIVER:-examples/22-overnight-mutate/main.aura}"
 ANOMALY_LOG="${AETHER_ANOMALY_LOG:-$ROOT/notes/aura-anomaly-log.md}"
@@ -177,7 +180,8 @@ invocations=0
 pass_n=0
 fail_n=0
 crash_n=0
-LIVE_CALLS_PER_INV=4
+# 6 agents × 6 waves (see examples/22-overnight-mutate/main.aura)
+LIVE_CALLS_PER_INV=36
 est_live_calls_max=$((MAX_PROPOSES * LIVE_CALLS_PER_INV))
 
 now_local=$(date '+%Y-%m-%d %H:%M:%S %Z')
@@ -197,8 +201,9 @@ echo "overnight-mutate: start $now_local"
 echo "  schedule=$SCHEDULE  TZ=$TZ  plan window=${RESET_HOUR}:00–$((RESET_HOUR + WINDOW_HOURS)):00"
 echo "  $reset_note"
 echo "  hard stop: $stop_reason  (≈ ${remain_to_deadline} min from now)"
-echo "  secondary: max_invocations=$MAX_PROPOSES  sleep=${SLEEP_SEC}s  peak_only=$PEAK_ONLY"
-echo "  est. live LLM calls upper bound ≈ $est_live_calls_max (4/invocation × max_invocations)"
+echo "  secondary: max_invocations=$MAX_PROPOSES  sleep=${SLEEP_SEC}s  peak_only=$PEAK_ONLY  agents=${AETHER_OVERNIGHT_AGENTS}"
+echo "  pressure: 6-agent aether:fanout × 6 waves ≈ ${LIVE_CALLS_PER_INV} LLM calls/invocation (parallel-yield when host ok)"
+echo "  est. live LLM calls upper bound ≈ $est_live_calls_max"
 echo "  context: each llm:chat is a fresh short one-shot — does not fill 1M window"
 echo "  mode=${AETHER_LLM_PROPOSE}  driver=$DRIVER"
 echo "  anomaly_log=$ANOMALY_LOG"
