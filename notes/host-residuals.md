@@ -8,11 +8,11 @@ PASS paths use pure-Aura workarounds.
 
 | Aether ID | Aura issue | Title |
 |-----------|------------|--------|
-| tracker | [#2578](https://github.com/cybrid-systems/aura/issues/2578) | Host residual tracker (Phase 3 H1–H8) |
-| H1 | [#2580](https://github.com/cybrid-systems/aura/issues/2580) | Multi-binding `let` mis-binds |
-| H3/H4/H8 | [#2579](https://github.com/cybrid-systems/aura/issues/2579) | Module free-vars / export / define-after-mutate residual |
-| H5/H6 | [#2581](https://github.com/cybrid-systems/aura/issues/2581) | fiber:spawn mis-capture; orch:parallel free-var after rebind |
-| H7 | [#2582](https://github.com/cybrid-systems/aura/issues/2582) | hot-update AOT vs pure-Aura hot strategy |
+| tracker | [#2578](https://github.com/cybrid-systems/aura/issues/2578) | Host residual tracker (Phase 3 H1–H8) — open |
+| H1 | [#2580](https://github.com/cybrid-systems/aura/issues/2580) | Multi-binding `let` mis-binds — **open** |
+| H3/H4/H8 | [#2579](https://github.com/cybrid-systems/aura/issues/2579) | Module free-vars / export — **closed** (Aether A+F extract + sole-export rule) |
+| H5/H6 | [#2581](https://github.com/cybrid-systems/aura/issues/2581) | fiber/orch parallel — **closed** (Aether 17 dual-mode fanout) |
+| H7 | [#2582](https://github.com/cybrid-systems/aura/issues/2582) | hot-update AOT vs pure-Aura hot strategy — **open** |
 | H2 | — | Prefer `(eq? x #t)` — convention only (no issue) |
 
 Earlier wave (closed, partial fix): [#2566](https://github.com/cybrid-systems/aura/issues/2566)–[#2570](https://github.com/cybrid-systems/aura/issues/2570).
@@ -47,4 +47,6 @@ Earlier wave (closed, partial fix): [#2566](https://github.com/cybrid-systems/au
 ## Status
 
 - Filed on Aura 2026-08-02: #2578–#2582.  
-- No open Aether code blockers for Phase 1–3 denseness bar.
+- **Closed 2026-08-03:** #2579 (A+F extract), #2581 (true parallel fanout).  
+- Still open: #2578 tracker, #2580 (H1 let), #2582 (H7 hot-update).  
+- No open Aether code blockers for denseness bar (16/16 offline).
