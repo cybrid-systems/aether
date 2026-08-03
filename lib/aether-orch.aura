@@ -2,13 +2,14 @@
 ;
 ; (require "aether-orch" all:)
 ;
-; Topology: many propose edges → (optional yield fanout) → one arbiter
-; → one executor. Public entry points are self-contained (no private free
-; helpers): host free-vars break across workspace rebind.
+; Topology: many propose edges → fanout → one arbiter → one executor.
+; Public entry points are self-contained (no private free helpers).
 ;
-; Fanout mode: sequential-with-yield (cooperative parallel topology).
-; Host fiber:spawn / orch:parallel can mis-capture closures and leave
-; std/orchestrator free-vars unbound after rebind — not used on PASS path.
+; Fanout modes:
+;   parallel-yield   — orch:parallel-with-yield (preferred when host healthy)
+;   sequential-yield — cooperative map + mutate:safe-yield (fallback)
+;
+; aether:fanout tries parallel first, falls back to sequential.
 
 (export aether:proposal-deny?
         aether:proposal-widen?
@@ -16,23 +17,32 @@
         aether:arbitrate
         aether:arbiter-skip
         aether:fanout-with-yield
+        aether:fanout-parallel
+        aether:fanout
         aether:fanout-mode)
 
 (require "std/list" all:)
 (require "std/string" all:)
 (require "std/mutate" all:)
+(require "std/orchestrator" all:)
 (require "aether-propose" all:)
 
-; Cooperative multi-propose: safe-yield before/after each proposer.
-; proposers = list of (lambda (input) proposal); no mutation allowed inside.
-; → (list mode proposals yield-count)  mode is always "sequential-yield"
-(define (aether:fanout-mode) "sequential-yield")
+; Last successful fanout mode (string cell for observability).
+(define *aether-fanout-mode* "sequential-yield")
 
+(define (aether:fanout-mode)
+  *aether-fanout-mode*)
+
+; Cooperative multi-propose: safe-yield before/after each proposer.
+; proposers = list of (lambda (input) proposal); no mutation inside.
+; → (list mode proposals yield-count)
 (define (aether:fanout-with-yield proposers input)
   (let ((fs (if (list? proposers) proposers (list proposers))))
     (let loop ((xs fs) (acc (quote ())) (yc 0))
       (if (null? xs)
-        (list "sequential-yield" (reverse acc) yc)
+        (begin
+          (set! *aether-fanout-mode* "sequential-yield")
+          (list "sequential-yield" (reverse acc) yc))
         (begin
           (try (mutate:safe-yield) (catch (e) #f))
           (let ((yc1 (+ yc 1)))
@@ -40,6 +50,37 @@
               (try (mutate:safe-yield) (catch (e) #f))
               (let ((yc2 (+ yc1 1)))
                 (loop (cdr xs) (cons p acc) yc2)))))))))
+
+; True parallel fanout via orch:parallel-with-yield.
+; Returns (list "parallel-yield" proposals yield-count) or #f if unusable.
+(define (aether:fanout-parallel proposers input)
+  (let ((fs (if (list? proposers) proposers (list proposers))))
+    (let ((n (length fs)))
+      (let ((raw
+              (try (orch:parallel-with-yield fs input)
+                   (catch (e) #f))))
+        (if (not (list? raw))
+          #f
+          (if (not (= (length raw) n))
+            #f
+            (let loop ((xs raw) (ok #t))
+              (if (null? xs)
+                (if ok
+                  (begin
+                    (set! *aether-fanout-mode* "parallel-yield")
+                    ; orch yields internally; count 2 barriers per worker as estimate
+                    (list "parallel-yield" raw (* n 2)))
+                  #f)
+                (if (pair? (car xs))
+                  (loop (cdr xs) ok)
+                  (loop (cdr xs) #f))))))))))
+
+; Prefer parallel; fall back to sequential-yield.
+(define (aether:fanout proposers input)
+  (let ((par (try (aether:fanout-parallel proposers input) (catch (e) #f))))
+    (if par
+      par
+      (aether:fanout-with-yield proposers input))))
 
 (define (aether:arbiter-skip reason)
   (list "skip" "gate" "" (if (string? reason) reason "arbiter-skip") "arbiter"))

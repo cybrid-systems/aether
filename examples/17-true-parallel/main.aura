@@ -1,0 +1,220 @@
+; examples/17-true-parallel/main.aura
+; Axis C #1 follow-up: true orch parallel fanout (parallel-yield mode).
+; Workers only propose; arbiter + single executor mutate.
+; PASS requires mode=parallel-yield (not sequential fallback).
+; Run: ./scripts/run-aura.sh examples/17-true-parallel/main.aura
+
+(require "std/list" all:)
+(require "aether-min" all:)
+(require "aether-domain" all:)
+(require "aether-propose" all:)
+(require "aether-orch" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether 17-true-parallel: orch parallel-yield fanout ===")
+(newline)
+
+(define installed #f)
+(define fan #f)
+(define mode #f)
+(define props #f)
+(define yields #f)
+(define picked #f)
+(define exec-r #f)
+(define a-ok #f)
+(define b-ok #f)
+(define c-ok #f)
+(define all-ok #f)
+(define fails-now 0)
+(define src0 #f)
+(define src1 #f)
+
+(set! installed (aether:gate-install-strict))
+(display "R0 fails=")
+(display (aether:gate-fail-count))
+(newline)
+
+; ── A: over budget — parallel fanout both widen; mode must be parallel ──
+(set! fails-now (aether:gate-fail-count))
+(set! fan
+  (aether:fanout
+    (list
+      (lambda (f)
+        (if (> f 4)
+          (list "mutate" "gate" "(lambda (x) (< x 7))" "cons-widen" "conservative")
+          (list "skip" "gate" "" "cons-skip" "conservative")))
+      (lambda (f)
+        (if (> f 3)
+          (list "mutate" "gate" "(lambda (x) (< x 7))" "agg-widen" "aggressive")
+          (list "skip" "gate" "" "agg-skip" "aggressive"))))
+    fails-now))
+(set! mode (car fan))
+(set! props (car (cdr fan)))
+(set! yields (car (cdr (cdr fan))))
+(set! picked (aether:arbitrate props (aether:gate-within-budget?)))
+(display "A mode=")
+(display mode)
+(display " yields=")
+(display yields)
+(newline)
+(display "A props=")
+(write props)
+(newline)
+(display "A picked=")
+(write picked)
+(newline)
+(set! exec-r
+  (aether:execute-proposal
+    picked
+    (lambda () (aether:gate-fail-count))
+    (lambda () #t)
+    aether:gate-within-budget?))
+(display "A exec=")
+(write exec-r)
+(newline)
+(set! src0
+  (if (and (list? props) (>= (length props) 1) (pair? (car props)))
+    (aether:proposal-source (car props))
+    ""))
+(set! src1
+  (if (and (list? props) (>= (length props) 2) (pair? (car (cdr props))))
+    (aether:proposal-source (car (cdr props)))
+    ""))
+(set! a-ok
+  (and (equal? mode "parallel-yield")
+       (list? props)
+       (= (length props) 2)
+       (pair? (car props))
+       (pair? (car (cdr props)))
+       (not (equal? src0 src1))
+       (>= yields 4)
+       (equal? (car picked) "mutate")
+       (aether:proposal-widen? picked)
+       (eq? (aether:alist-ref ":decision" exec-r #f) 'commit)
+       (aether:gate-within-budget?)))
+
+; ── B: healthy after rebind — parallel still works; arb prefers skip ──
+(set! fails-now (aether:gate-fail-count))
+(set! fan
+  (aether:fanout
+    (list
+      (lambda (f)
+        (if (> f 4)
+          (list "mutate" "gate" "(lambda (x) (< x 7))" "cons-widen" "conservative")
+          (list "skip" "gate" "" "cons-skip" "conservative")))
+      (lambda (f)
+        (if (> f 3)
+          (list "mutate" "gate" "(lambda (x) (< x 7))" "agg-widen" "aggressive")
+          (list "skip" "gate" "" "agg-skip" "aggressive"))))
+    fails-now))
+(set! mode (car fan))
+(set! props (car (cdr fan)))
+(set! yields (car (cdr (cdr fan))))
+(set! picked (aether:arbitrate props (aether:gate-within-budget?)))
+(display "B mode=")
+(display mode)
+(display " props=")
+(write props)
+(newline)
+(display "B picked=")
+(write picked)
+(newline)
+(set! exec-r
+  (aether:execute-proposal
+    picked
+    (lambda () (aether:gate-fail-count))
+    (lambda () #f)
+    aether:gate-within-budget?))
+(display "B exec=")
+(write exec-r)
+(newline)
+(set! b-ok
+  (and (equal? mode "parallel-yield")
+       (= (length props) 2)
+       (pair? (car props))
+       (>= yields 4)
+       (equal? (car picked) "skip")
+       (eq? (aether:alist-ref ":decision" exec-r #f) 'skip)
+       (aether:gate-within-budget?)))
+
+; ── C: parallel fanout with deny worker filtered by arbiter ──
+(set! fails-now (aether:gate-fail-count))
+(set! fan
+  (aether:fanout
+    (list
+      (lambda (f) (list "skip" "gate" "" "cons-skip" "conservative"))
+      (lambda (f) (list "mutate" "gate" "(lambda (x) #f)" "deny-only" "rogue")))
+    fails-now))
+(set! mode (car fan))
+(set! props (car (cdr fan)))
+(set! yields (car (cdr (cdr fan))))
+(set! picked (aether:arbitrate props (aether:gate-within-budget?)))
+(display "C mode=")
+(display mode)
+(display " props=")
+(write props)
+(newline)
+(display "C picked=")
+(write picked)
+(newline)
+(set! exec-r
+  (aether:execute-proposal
+    picked
+    (lambda () (aether:gate-fail-count))
+    (lambda () #f)
+    aether:gate-within-budget?))
+(display "C exec=")
+(write exec-r)
+(newline)
+(set! c-ok
+  (and (equal? mode "parallel-yield")
+       (= (length props) 2)
+       (pair? (car props))
+       (pair? (car (cdr props)))
+       (aether:proposal-deny? (car (cdr props)))
+       (equal? (car picked) "skip")
+       (not (aether:proposal-deny? picked))
+       (eq? (aether:alist-ref ":decision" exec-r #f) 'skip)
+       (aether:gate-within-budget?)))
+
+(display "stats ")
+(write (aether:stats-alist))
+(newline)
+(display "fanout-mode=")
+(display (aether:fanout-mode))
+(newline)
+
+(set! all-ok
+  (and installed
+       a-ok b-ok c-ok
+       (aether:safety-ok?)
+       (= (aether:stats-ref "escapes") 0)
+       (>= (aether:stats-ref "commits") 1)
+       (equal? (aether:fanout-mode) "parallel-yield")))
+
+(if all-ok
+  (begin
+    (display "PASS: true parallel fanout (mode=parallel-yield + arbiter)")
+    (newline)
+    (display "escapes: 0; orch:parallel-with-yield on propose edge only")
+    (newline)
+    (display "RESULT pass example=17-true-parallel escapes=0 mode=parallel-yield")
+    (newline))
+  (begin
+    (display "FAIL: true parallel fanout")
+    (newline)
+    (display " a-ok=")
+    (display a-ok)
+    (display " b-ok=")
+    (display b-ok)
+    (display " c-ok=")
+    (display c-ok)
+    (display " mode=")
+    (display mode)
+    (newline)
+    (display "RESULT fail example=17-true-parallel mode=")
+    (display mode)
+    (display " escapes=")
+    (display (aether:stats-ref "escapes"))
+    (newline)))

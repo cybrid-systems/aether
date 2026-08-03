@@ -163,7 +163,7 @@ aether/
 | **1** | 01–03 | Minimal loop, business decide, dual-role; core \(E\)=0 |
 | **2** | 04–05 | Hot heal + N=10 harness; first denseness write-up |
 | **3** | 06–14 | Propose \(E\), schema/wire/live LLM, N=50–100, arbiter, yield, multi-tenant, CI |
-| **4** | 15–16 | Version coexistence + drift freeze (Axis D residual) |
+| **4** | 15–17 | Version coexist, drift freeze, true parallel fanout |
 
 | # | Probe | Axes | Answers |
 |---|-------|------|---------|
@@ -228,6 +228,7 @@ source ./scripts/env-minimax.sh
 | **14** | **N=100** denseness soak |
 | **15** | **Version coexistence** (active + golden peer) |
 | **16** | **Drift freeze** (refuse mutate while drifted) |
+| **17** | **True parallel** fanout (`orch:parallel-with-yield`) |
 
 New probe: copy `examples/_template` → `examples/NN-name`, add to `run-all.sh` / `report.sh` if offline.
 

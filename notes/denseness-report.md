@@ -29,7 +29,7 @@ Aether does **not** claim denseness over all of \(S_{\mathrm{practical}}\).
 |------|----------|-------------------|
 | **A** Loop completeness | Multi-round O→D→M→V→R | 01, 02, 05, 10 |
 | **B** Mutation surface | Named rebind stays safe | 01–05, 10, 13 |
-| **C** Orch topology | Dual → arbitrate → yield fanout | 03, 11, 12 |
+| **C** Orch topology | Dual → arbitrate → yield / true parallel | 03, 11, 12, **17** |
 | **D** Temporal adaptation | Hot deploy, poison, heal, version, freeze | 04, 05, 10, 13, **15**, **16** |
 | **E** World boundary | Schema / wire / stub / live LLM | 03, 06–09 |
 | **F** Metrology | Stats, report, escape log | all + `scripts/report.sh` |
@@ -56,8 +56,9 @@ Aether does **not** claim denseness over all of \(S_{\mathrm{practical}}\).
 | [14-long-n-100](../examples/14-long-n-100/) | A B D F | PASS N=100 poison/heal soak; safety-ok | 0 |
 | [15-version-coexist](../examples/15-version-coexist/) | D B | PASS active+golden coexist; poison active only | 0 |
 | [16-drift-freeze](../examples/16-drift-freeze/) | D A | PASS freeze on drift; heal unfreezes | 0 |
+| [17-true-parallel](../examples/17-true-parallel/) | C | PASS orch `parallel-yield` fanout after rebind | 0 |
 
-Offline automation covers **01–08, 10–16**. Live **09** is opt-in.
+Offline automation covers **01–08, 10–17**. Live **09** is opt-in.
 
 ---
 
@@ -150,7 +151,8 @@ denseness for numerical kernels, hard realtime, drivers, or arbitrary product do
 | 2 | Hot heal, long-run N=10, first report | **Landed** |
 | 3 | Propose E, schema/wire/live, N=50–100, orch, yield, axis split, multi-tenant, CI | **Landed** |
 | 4 | Version coexistence (15); drift freeze (16) | **Landed** |
-| Upstream-blocked | True fiber parallel; full A+F extract | [host-residuals.md](host-residuals.md) |
+| 4b | True parallel fanout (17) when host orch healthy | **Landed** |
+| Upstream-blocked | Full A+F extract; residual free-var cases | [host-residuals.md](host-residuals.md) |
 
 ---
 

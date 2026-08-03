@@ -25,8 +25,8 @@ Earlier wave (closed, partial fix): [#2566](https://github.com/cybrid-systems/au
 | H2 | Verify needs `(eq? x #t)` | Documented convention | docs |
 | H3 | Large trailing `define` fails to export | Keep `loop-once` on `aether-min` facade | #2579 |
 | H4 | Cross-module free-vars / private cells die after `set-code`+rebind | Embed stats+loop in `aether-min`; inline public entries | #2579 |
-| H5 | `fiber:spawn` workers mis-capture closures | `aether:fanout-with-yield` sequential-yield | #2581 |
-| H6 | `orch:parallel` free-var after rebind (`orch-yield-safe`) | Do not use orch parallel on PASS path | #2581 |
+| H5 | `fiber:spawn` workers mis-capture closures | sequential fallback; **17** uses orch when healthy | #2581 |
+| H6 | `orch:parallel` free-var after rebind (`orch-yield-safe`) | `aether:fanout` tries parallel then sequential; **17** requires parallel | #2581 |
 | H7 | `std/hot-update` AOT `.so` oriented | Strategy rebind (example 04) | #2582 |
 | H8 | `define` after mutate flaky | Pre-define cells; `set!` after | #2579 |
 

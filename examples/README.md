@@ -28,6 +28,7 @@ Phase 1–3 offline suite includes N=100 soak (`./scripts/report.sh`). Judgment:
 | `14-long-n-100` | N=100 denseness soak |
 | `15-version-coexist` | Active + golden version coexistence |
 | `16-drift-freeze` | Drift freeze mutation gate |
+| `17-true-parallel` | orch parallel-yield fanout (requires host) |
 
 ## Live (not in run-all)
 
