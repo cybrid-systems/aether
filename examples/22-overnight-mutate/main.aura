@@ -97,18 +97,9 @@
             (list "skip" "gate" "" "stub-skip" "llm-stub"))))
       (repeat-stub-mix (- n 1) (+ i 1)))))
 
-; Live: prefer true fiber parallel (orch:parallel-with-yield) for max pressure.
-; Fall back to sequential-yield only if parallel unusable (host residual).
+; Live: aether:fanout tries orch:parallel-with-yield (fiber) first, then sequential.
 (define (run-fanout-live n)
-  (let ((ps (repeat-live n)))
-    (let ((par (try (aether:fanout-parallel ps (aether:gate-fail-count))
-                    (catch (e) #f))))
-      (if par
-        par
-        (begin
-          (display "WAVE_NOTE parallel-yield unavailable → sequential-yield fallback")
-          (newline)
-          (aether:fanout-with-yield ps (aether:gate-fail-count)))))))
+  (aether:fanout (repeat-live n) (aether:gate-fail-count)))
 
 (define (run-fanout-stub n)
   (aether:fanout-with-yield (repeat-stub-mix n 0) (aether:gate-fail-count)))
