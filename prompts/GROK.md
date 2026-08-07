@@ -101,9 +101,9 @@ notes/denseness-report.md
 
 ## Phase plan
 
-### Phase 1–5 (landed — denseness bar met; Phase 5 multi-LLM inside Aether)
+### Phase 1–6 (landed — denseness bar met; Phase 5 multi-LLM inside Aether)
 
-**Offline:** `01`–`08`, `10`–`22` via `./scripts/report.sh`.  
+**Offline:** `01`–`08`, `10`–`25` via `./scripts/report.sh`.  
 **Live:** `09` MiniMax-M3; Phase 5 multi/concurrent with `AETHER_LLM_PROPOSE=live`.  
 **Overnight:** `./scripts/overnight-mutate.sh` (budget + rate; anomaly log).  
 **Libs:** `aether-min`, `aether-mutate-policy`, `aether-domain`, `aether-propose`,
@@ -123,7 +123,8 @@ Phase highlights:
 | 2 | 04–05 hot heal + N=10 + first report |
 | 3 | 06–09 propose \(E\); 10–14 N-stress; 11–12 orch; axis split; 13 multi-tenant; CI; final report |
 | 4 | 15 version coexist; 16 drift freeze; 17 true parallel; 18 multi-bind; 19 hot-strategy; axis extract |
-| **5** | **20** multi live/stub propose + arbiter; **21** concurrent fanout+yield; **22** overnight harness |
+| 5 | 20 multi live/stub propose + arbiter; 21 concurrent fanout+yield; 22 overnight harness |
+| **6** | **23** mutate verifier surface; **24** tool-router + tool-edge \(E\); **25** checkpoint recover |
 
 ### Phase 5 — no new span
 

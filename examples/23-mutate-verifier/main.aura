@@ -1,0 +1,194 @@
+; examples/23-mutate-verifier/main.aura
+; Axis B: verifier is a first-class mutation surface (not only domain strategy).
+;
+; Single workspace binding `kernel` encodes both score and verify halves
+; (host multi-define rebind is flaky — one name keeps denseness isomorphic).
+;   (kernel "score" x)  → number
+;   (kernel "verify" v) → bool
+;
+; Flow:
+;   A: rebind verify half to expect triple (score still double)
+;   B: rebind score half to triple under new verify → commit
+;   C: poison verify to always-true (meta allows) — denseness of surface
+;   D: heal to healthy kernel; bad score rejected by verify → rollback
+;
+; Run: ./scripts/run-aura.sh examples/23-mutate-verifier/main.aura
+
+(require "std/list" all:)
+(require "aether-min" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether 23-mutate-verifier: verify fn as mutation surface ===")
+(newline)
+
+; Predeclare cells (H8: no define after mutate).
+(define body-v0
+  "(lambda (cmd x) (if (equal? cmd \"score\") (* x 2) (if (equal? cmd \"verify\") (= x 14) #f)))")
+(define body-v1
+  "(lambda (cmd x) (if (equal? cmd \"score\") (* x 2) (if (equal? cmd \"verify\") (= x 21) #f)))")
+(define body-v2
+  "(lambda (cmd x) (if (equal? cmd \"score\") (* x 3) (if (equal? cmd \"verify\") (= x 21) #f)))")
+(define body-poison-vfy
+  "(lambda (cmd x) (if (equal? cmd \"score\") (* x 3) (if (equal? cmd \"verify\") #t #f)))")
+(define body-bad-score
+  "(lambda (cmd x) (if (equal? cmd \"score\") (* x 99) (if (equal? cmd \"verify\") (= x 21) #f)))")
+
+(define installed #f)
+(define r1 #f)
+(define r2 #f)
+(define r3 #f)
+(define r-heal #f)
+(define r4 #f)
+(define a-ok #f)
+(define b-ok #f)
+(define c-ok #f)
+(define d-ok #f)
+(define e-ok #f)
+(define all-ok #f)
+
+(set! installed
+  (aether:install-source
+    (string-append "(define kernel " body-v0 ")")))
+
+(display "R0 score=")
+(display (kernel "score" 7))
+(display " verify(14)=")
+(display (kernel "verify" 14))
+(display " verify(21)=")
+(display (kernel "verify" 21))
+(newline)
+
+; ── A: promote verify half to expect 21 ──
+(set! r1
+  (aether:loop-once
+    (lambda () (kernel "score" 7))
+    (lambda () #t)
+    "kernel"
+    body-v1
+    "verify-expect-21"
+    (lambda ()
+      (and (= (kernel "score" 7) 14)
+           (eq? (kernel "verify" 21) #t)
+           (eq? (kernel "verify" 14) #f)))))
+(display "A promote-verify=")
+(write r1)
+(newline)
+(set! a-ok
+  (and installed
+       (eq? (aether:alist-ref ":decision" r1 #f) 'commit)
+       (eq? (kernel "verify" 21) #t)
+       (= (kernel "score" 7) 14)))
+
+; ── B: evolve score under new verify ──
+(set! r2
+  (aether:loop-once
+    (lambda () (kernel "score" 7))
+    (lambda () #t)
+    "kernel"
+    body-v2
+    "score-to-triple"
+    (lambda ()
+      (and (= (kernel "score" 7) 21)
+           (eq? (kernel "verify" (kernel "score" 7)) #t)))))
+(display "B score-evolve=")
+(write r2)
+(newline)
+(display "B score=")
+(display (kernel "score" 7))
+(newline)
+(set! b-ok
+  (and (eq? (aether:alist-ref ":decision" r2 #f) 'commit)
+       (= (kernel "score" 7) 21)
+       (eq? (kernel "verify" 21) #t)))
+
+; ── C: poison verify always-true (surface is mutable) ──
+(set! r3
+  (aether:loop-once
+    (lambda () (kernel "score" 7))
+    (lambda () #t)
+    "kernel"
+    body-poison-vfy
+    "poison-verify-always-t"
+    (lambda () (eq? (kernel "verify" 0) #t))))
+(display "C poison-verify=")
+(write r3)
+(newline)
+(set! c-ok
+  (and (eq? (aether:alist-ref ":decision" r3 #f) 'commit)
+       (eq? (kernel "verify" 0) #t)))
+
+; ── D: heal healthy kernel; reject bad score via verify ──
+(set! r-heal
+  (aether:loop-once
+    (lambda () (kernel "score" 7))
+    (lambda () #t)
+    "kernel"
+    body-v2
+    "heal-kernel"
+    (lambda ()
+      (and (= (kernel "score" 7) 21)
+           (eq? (kernel "verify" 21) #t)
+           (eq? (kernel "verify" 0) #f)))))
+(display "D heal=")
+(write r-heal)
+(newline)
+(set! d-ok
+  (eq? (aether:alist-ref ":decision" r-heal #f) 'commit))
+
+(set! r4
+  (aether:loop-once
+    (lambda () (kernel "score" 7))
+    (lambda () #t)
+    "kernel"
+    body-bad-score
+    "bad-score-reject"
+    (lambda () (eq? (kernel "verify" (kernel "score" 7)) #t))))
+(display "E reject-bad=")
+(write r4)
+(newline)
+(display "E score still=")
+(display (kernel "score" 7))
+(newline)
+(set! e-ok
+  (and (eq? (aether:alist-ref ":decision" r4 #f) 'rollback)
+       (= (kernel "score" 7) 21)))
+
+(display "stats ")
+(write (aether:stats-alist))
+(newline)
+
+(set! all-ok
+  (and a-ok b-ok c-ok d-ok e-ok
+       (aether:safety-ok?)
+       (= (aether:stats-ref "escapes") 0)
+       (>= (aether:stats-ref "commits") 3)
+       (>= (aether:stats-ref "rollbacks") 1)))
+
+(if all-ok
+  (begin
+    (display "PASS: verifier mutation surface (promote + evolve + poison + heal + reject)")
+    (newline)
+    (display "escapes: 0; verify half rebindable under loop-once guards")
+    (newline)
+    (display "RESULT pass example=23-mutate-verifier escapes=0 commits=")
+    (display (aether:stats-ref "commits"))
+    (display " rollbacks=")
+    (display (aether:stats-ref "rollbacks"))
+    (newline))
+  (begin
+    (display "FAIL: mutate-verifier checks")
+    (newline)
+    (display "  a=")
+    (display a-ok)
+    (display " b=")
+    (display b-ok)
+    (display " c=")
+    (display c-ok)
+    (display " d=")
+    (display d-ok)
+    (display " e=")
+    (display e-ok)
+    (newline)
+    (display "RESULT fail example=23-mutate-verifier")
+    (newline)))

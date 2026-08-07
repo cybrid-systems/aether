@@ -1,0 +1,162 @@
+; examples/25-checkpoint-recover/main.aura
+; Axes A + D: interruptible continuous time — checkpoint then recover.
+;
+; After a healthy commit, take an explicit checkpoint (ast snapshot).
+; Simulate crash mutation; restore checkpoint; resume O→D→M→V→R.
+;
+; Note: std/persist after rebind is unreliable on current host (load may no-op);
+; denseness path uses aether:snapshot / aether:restore (pure Aura basis).
+;
+; Run: ./scripts/run-aura.sh examples/25-checkpoint-recover/main.aura
+
+(require "std/list" all:)
+(require "aether-min" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether 25-checkpoint-recover: interrupt → restore → resume ===")
+(newline)
+
+(define installed #f)
+(define r1 #f)
+(define r-poison #f)
+(define r2 #f)
+(define r3 #f)
+(define ckpt -1)
+(define restored #f)
+(define score-after-poison 0)
+(define score-after-restore 0)
+(define a-ok #f)
+(define b-ok #f)
+(define c-ok #f)
+(define d-ok #f)
+(define all-ok #f)
+
+(set! installed
+  (aether:install-source "(define score (lambda (x) (* x 2)))"))
+
+(display "R0 score=")
+(display (score 7))
+(newline)
+
+; ── A: healthy evolve double → triple ──
+(set! r1
+  (aether:loop-once
+    (lambda () (score 7))
+    (lambda () #t)
+    "score"
+    "(lambda (x) (* x 3))"
+    "to-triple"
+    (lambda () (= (score 7) 21))))
+(display "A commit=")
+(write r1)
+(newline)
+(set! a-ok
+  (and installed
+       (eq? (aether:alist-ref ":decision" r1 #f) 'commit)
+       (= (score 7) 21)))
+
+; ── B: checkpoint (interrupt boundary) ──
+(set! ckpt (aether:snapshot "interrupt-ckpt"))
+(display "B checkpoint id=")
+(display ckpt)
+(newline)
+(set! b-ok (and (number? ckpt) (>= ckpt 0)))
+
+; ── C: simulate crash / corrupt mutation ──
+(set! r-poison
+  (aether:rebind-safe "score" "(lambda (x) (* x 100))" "crash-mut"))
+(set! score-after-poison (score 7))
+(display "C poison score=")
+(display score-after-poison)
+(display " mut=")
+(write r-poison)
+(newline)
+(set! c-ok
+  (and (aether:alist-ref ":ok" r-poison #f)
+       (= score-after-poison 700)))
+
+; ── D: recover + resume closed loop ──
+(set! restored (aether:restore ckpt))
+(set! score-after-restore (try (score 7) (catch (e) -1)))
+(display "D restored=")
+(display restored)
+(display " score=")
+(display score-after-restore)
+(newline)
+
+; Resume: already at goal → skip
+(set! r2
+  (aether:loop-once
+    (lambda () (score 7))
+    (lambda () (not (= (score 7) 21)))
+    "score"
+    "(lambda (x) (* x 3))"
+    "post-recover-skip"
+    (lambda () (= (score 7) 21))))
+(display "D resume-skip=")
+(write r2)
+(newline)
+
+; Still rejects bad proposal after recover
+(set! r3
+  (aether:loop-once
+    (lambda () (score 7))
+    (lambda () #t)
+    "score"
+    "(lambda (x) (* x 99))"
+    "post-recover-reject"
+    (lambda () (= (score 7) 21))))
+(display "D resume-reject=")
+(write r3)
+(newline)
+(display "D final score=")
+(display (score 7))
+(newline)
+
+(set! d-ok
+  (and restored
+       (= score-after-restore 21)
+       (eq? (aether:alist-ref ":decision" r2 #f) 'skip)
+       (eq? (aether:alist-ref ":decision" r3 #f) 'rollback)
+       (= (score 7) 21)
+       (aether:safety-ok?)))
+
+(display "stats ")
+(write (aether:stats-alist))
+(newline)
+
+(set! all-ok
+  (and a-ok b-ok c-ok d-ok
+       (= (aether:stats-ref "escapes") 0)
+       (>= (aether:stats-ref "commits") 1)
+       (>= (aether:stats-ref "rollbacks") 1)
+       (>= (aether:stats-ref "decide-skip") 1)))
+
+(if all-ok
+  (begin
+    (display "PASS: checkpoint recover (commit → ckpt → poison → restore → resume)")
+    (newline)
+    (display "escapes: 0; continuous time via snapshot restore (not flaky persist)")
+    (newline)
+    (display "RESULT pass example=25-checkpoint-recover escapes=0 ckpt=")
+    (display ckpt)
+    (display " commits=")
+    (display (aether:stats-ref "commits"))
+    (display " rollbacks=")
+    (display (aether:stats-ref "rollbacks"))
+    (newline))
+  (begin
+    (display "FAIL: checkpoint-recover checks")
+    (newline)
+    (display "  a=")
+    (display a-ok)
+    (display " b=")
+    (display b-ok)
+    (display " c=")
+    (display c-ok)
+    (display " d=")
+    (display d-ok)
+    (newline)
+    (display "RESULT fail example=25-checkpoint-recover")
+    (newline)))

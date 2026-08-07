@@ -19,11 +19,11 @@ PASS paths use pure-Aura workarounds.
 
 Earlier wave (closed, partial fix): [#2566](https://github.com/cybrid-systems/aura/issues/2566)–[#2570](https://github.com/cybrid-systems/aura/issues/2570).
 
-### Phase 5 overnight multi-agent stress (H9–H12) — open
+### Phase 5 overnight multi-agent stress (H9–H12) — closed upstream
 
 | Aether ID | Aura issue | Title |
 |-----------|------------|--------|
-| tracker | [#2649](https://github.com/cybrid-systems/aura/issues/2649) | Overnight multi-agent stress host residuals (Phase 5) — **open** |
+| tracker | [#2649](https://github.com/cybrid-systems/aura/issues/2649) | Overnight multi-agent stress host residuals (Phase 5) — **closed** |
 | H9 | [#2651](https://github.com/cybrid-systems/aura/issues/2651) | **P0** SIGSEGV in `pmr::memory_resource` / AST `construct_at` under fanout + long context |
 | H10 | [#2653](https://github.com/cybrid-systems/aura/issues/2653) | **P1** `load_module_file` resolves LLM prompts / empty / `16384` as module path |
 | H11 | [#2650](https://github.com/cybrid-systems/aura/issues/2650) | **P1** `recursion depth exceeded (>700)` under multi-agent yield fanout |
@@ -31,6 +31,16 @@ Earlier wave (closed, partial fix): [#2566](https://github.com/cybrid-systems/au
 
 Session evidence: `20260804T214445+0800`, Aura `ecea342f`, Aether `e08ea52`,
 `AETHER_LLM_CONTEXT_CHARS=16384`, agents 52–60 × 64 jobs. See `notes/aura-anomaly-log.md`.
+
+### Phase 6 denseness host residuals (H13–H14) — open
+
+| Aether ID | Aura issue | Title |
+|-----------|------------|--------|
+| tracker | [#2729](https://github.com/cybrid-systems/aura/issues/2729) | Phase 6 multi-define rebind + persist after mutate — **open** |
+| H14 | [#2730](https://github.com/cybrid-systems/aura/issues/2730) | **P1** `mutate:rebind` returns `#t` but no-op on multi-define workspace |
+| H13 | [#2731](https://github.com/cybrid-systems/aura/issues/2731) | **P1** `persist:save`/`load` does not restore state after `mutate:rebind` |
+
+Evidence: Aura `c84e9037`, 2026-08-07; Aether probes **23** / **25** workarounds.
 
 ## Residual table
 
@@ -48,6 +58,8 @@ Session evidence: `20260804T214445+0800`, Aura `ecea342f`, Aether `e08ea52`,
 | H10 | `load_module_file` sees LLM prompt / `16384` / empty path | Same; log for Aura; not a guest `require` bug | **#2653 open** |
 | H11 | `recursion depth exceeded (>700)` mid-wave | Optional: iterative pad; host must fix per-fiber depth | **#2650 open** |
 | H12 | Empty stats keys / NUL in stdout / WAVE field pollution | Treat metrics as suspect under host crash; file Aura | **#2652 open** |
+| H13 | `persist:save` after rebind serializes baseline; load may restore wrong or no-op | **25** uses `aether:snapshot`/`restore` | **#2731 open** |
+| H14 | Multi-define workspace: `mutate:rebind` returns `#t` but body unchanged | **23** single-name `kernel`; **15** active-first only | **#2730 open** |
 
 ## When fixed, Aether follow-ups
 
@@ -55,7 +67,9 @@ Session evidence: `20260804T214445+0800`, Aura `ecea342f`, Aether `e08ea52`,
 2. **#2579 (H3+H4+H8)** → A+F extract landed; H3 sole-export rule remains.  
 3. **#2580 (H1)** → multi-bind OK; **18** regression + simplified `loop-once` unpack.  
 4. **#2582 (H7)** → `std/hot-strategy` + Aether **19** landed.  
-5. **#2649 (H9–H12)** → re-run overnight at agents=60 × jobs=8 × ctx=16384; expect no SIGSEGV / no path-as-prompt; restore full pressure defaults when green.
+5. **#2649 (H9–H12)** → closed upstream; re-run overnight at full pressure when validating regressions.  
+6. **#2731 (H13)** → optional **25** `persist:` variant when save-after-rebind + load restores live score.  
+7. **#2730 (H14)** → optional **23** split `kernel` → named `score` + `verify-policy` when multi-define rebind applies.
 
 ## Reproduce (local)
 
@@ -73,5 +87,6 @@ AETHER_LLM_PROPOSE=live AETHER_OVERNIGHT_AGENTS=60 AETHER_LLM_CONTEXT_CHARS=1638
 
 - Filed on Aura 2026-08-02: #2578–#2582 (Phase 3).  
 - **Closed:** #2579, #2581, #2580, #2582, tracker #2578.  
-- Filed on Aura 2026-08-04: #2649–#2653 (Phase 5 overnight).  
-- Denseness offline suite through probe **19**; overnight live stress is **separate** residual track.
+- Filed on Aura 2026-08-04: #2649–#2653 (Phase 5 overnight); tracker **closed**.  
+- Filed on Aura 2026-08-07: #2729–#2731 (Phase 6 multi-define rebind + persist).  
+- Offline denseness suite through probe **25**; host residuals tracked separately.

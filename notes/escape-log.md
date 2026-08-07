@@ -20,10 +20,29 @@ Host configuration used for demos (not counted as \(V_A\) escapes of the evolvab
 - `AURA_SANDBOX=off` — CLI must allow workspace mutation; production isolation remains Aura’s responsibility.
 - `AURA_PIPELINE_STRICT=0` — some host builds forbid tree-walker fallback; demo scripts relax this for reproducibility.
 
-### Offline suite PASS paths (01–08, 10–22)
+### Offline suite PASS paths (01–08, 10–25)
 
-No business-logic escapes on the evolvable core. Propose-edge \(E\) is metered
-only where intentional (06 stub, 08 sim, 09 live, 20–22 multi/overnight stub).
+No business-logic escapes on the evolvable core. Propose/tool-edge \(E\) is
+metered only where intentional (06 stub, 08 sim, 09 live, 20–22 multi/overnight
+stub, **24** tool-stub).
+
+## [2026-08-07] Phase 6 tool-edge \(E\) (24)
+
+- Location: `examples/24-tool-router-e/main.aura` (`tool-invoke` + `http-stub`)
+- Reason: denseness of tool-router mutation surface + non-LLM tool-edge meter
+- Escape mechanism: **logical** tool-stub marker (no network on PASS path)
+- Impact: **tool edge only** — decide/verify/rollback remain pure Aura
+- Mitigation: schema-free but verify-gated router rebind; escapes counted in
+  `aether:stats` + local `tool-escapes`; heal removes stub capability
+
+## [2026-08-07] Persist after rebind unreliable (25 residual, not core \(E\))
+
+- Location: measured against `std/persist` `persist:save`/`persist:load`
+- Reason: continuous-time recover denseness
+- Escape mechanism: **none** on PASS — probe uses `aether:snapshot`/`restore`
+- Impact: file-soul round-trip after rebind may restore baseline or no-op
+- Mitigation: host residual **Aura #2731** (H13); denseness path is snapshot checkpoint
+- Tracker: **Aura #2729**; multi-define rebind no-op: **Aura #2730** (H14)
 
 ## [2026-08-03] Phase 5 multi-agent propose-edge \(E\) (20–22)
 

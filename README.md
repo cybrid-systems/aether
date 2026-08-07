@@ -164,7 +164,9 @@ aether/
 | **1** | 01–03 | Minimal loop, business decide, dual-role; core \(E\)=0 |
 | **2** | 04–05 | Hot heal + N=10 harness; first denseness write-up |
 | **3** | 06–14 | Propose \(E\), schema/wire/live LLM, N=50–100, arbiter, yield, multi-tenant, CI |
-| **4** | 15–17 | Version coexist, drift freeze, true parallel fanout |
+| **4** | 15–19 | Version coexist, drift freeze, true parallel, multi-bind, hot-strategy |
+| **5** | 20–22 | Multi/concurrent LLM propose + overnight harness |
+| **6** | 23–25 | Verifier surface, tool-router \(E\), checkpoint recover |
 
 | # | Probe | Axes | Answers |
 |---|-------|------|---------|
@@ -182,6 +184,17 @@ aether/
 | 12 | Parallel + yield | C | Fanout + yield + single mutator? |
 | 13 | Multi-tenant region | B D | Name-isolated rebind? |
 | 14 | Long-N N=100 | A B D F | Longer soak still pure + safety-ok? |
+| 15 | Version coexist | D B | Active + golden peer? |
+| 16 | Drift freeze | D A | Refuse mutate while drifted? |
+| 17 | True parallel | C | orch parallel-yield after rebind? |
+| 18 | Multi-bind let | A B | Multi-bind unpack after rebind? |
+| 19 | Hot-strategy | D | `std/hot-strategy` swap/heal? |
+| 20 | Multi live/stub propose | C E | Multi propose + pure arbiter? |
+| 21 | Concurrent propose+yield | C E | Fanout + single mutator? |
+| 22 | Overnight mutate | A E F | Budget-bounded continuous? |
+| 23 | Mutate verifier | B A F | Verify fn rebindable safely? |
+| 24 | Tool router \(E\) | B E | Router rebind + tool-edge meter? |
+| 25 | Checkpoint recover | A D F | Interrupt → restore → resume? |
 
 ## Escape discipline
 
@@ -197,11 +210,11 @@ Escapes on the evolvable core are treated as **evidence against** denseness unti
 
 Apache License 2.0 (same as Aura)
 
-## Status — Phase 1–5 denseness complete
+## Status — Phase 1–6 denseness complete
 
 **Judgment:** on \(S_{\mathrm{Aether}}\), \(V_A\) is **practically dense** on the
-evolvable core (offline suite incl. N=100 + Phase 5 multi-LLM / overnight;
-live 09/20/21 opt-in). Full write-up:
+evolvable core (offline suite incl. N=100 + Phase 5 multi-LLM / overnight +
+Phase 6 verifier/router/checkpoint; live 09/20/21 opt-in). Full write-up:
 [`notes/denseness-report.md`](notes/denseness-report.md).
 
 ### Phase map
@@ -210,7 +223,8 @@ live 09/20/21 opt-in). Full write-up:
 |-------|--------|--------|
 | 1–3 | Loop, propose \(E\), orch, N-soak, multi-tenant, CI | **Landed** |
 | 4 | Version coexist, drift freeze, true parallel, hot-strategy, multi-bind | **Landed** |
-| **5** | Multi live/stub propose + arbiter (**20**); concurrent fanout+yield (**21**); overnight harness (**22** + `scripts/overnight-mutate.sh`) | **Landed** |
+| 5 | Multi live/stub propose + arbiter (**20**); concurrent fanout+yield (**21**); overnight harness (**22** + `scripts/overnight-mutate.sh`) | **Landed** |
+| **6** | Verifier mutation surface (**23**); tool-router + tool-edge \(E\) (**24**); checkpoint recover (**25**) | **Landed** |
 
 **Phase 5 decision:** concurrent LLM agents stay **inside Aether** as denseness
 probes (axes C+E). **No new Unify span / repo** for an “LLM agent EDSL” until a
@@ -251,6 +265,9 @@ AETHER_LLM_PROPOSE=live ./scripts/run-aura.sh examples/20-multi-live-propose/mai
 | **20** | **Multi live/stub propose** + pure-Aura arbiter (Phase 5) |
 | **21** | **Concurrent propose fanout** + yield + single mutator (Phase 5) |
 | **22** | **Overnight mutate** driver (budget-bounded; sandbox domain) |
+| **23** | **Mutate verifier** surface (kernel score+verify rebind) |
+| **24** | **Tool router** rebind + tool-edge \(E\) meter |
+| **25** | **Checkpoint recover** (interrupt → restore → resume) |
 
 New probe: copy `examples/_template` → `examples/NN-name`, add to `run-all.sh` / `report.sh` if offline.
 

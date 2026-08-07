@@ -26,6 +26,9 @@ EXAMPLES=(
   examples/20-multi-live-propose/main.aura
   examples/21-concurrent-propose-yield/main.aura
   examples/22-overnight-mutate/main.aura
+  examples/23-mutate-verifier/main.aura
+  examples/24-tool-router-e/main.aura
+  examples/25-checkpoint-recover/main.aura
 )
 
 fail=0

@@ -34,6 +34,9 @@ Phase 1–3 offline suite includes N=100 soak (`./scripts/report.sh`). Judgment:
 | `20-multi-live-propose` | Phase 5 multi stub/live propose + pure-Aura arbiter |
 | `21-concurrent-propose-yield` | Phase 5 concurrent fanout + yield + single mutator |
 | `22-overnight-mutate` | Phase 5 budget-bounded continuous mutate driver |
+| `23-mutate-verifier` | Axis B: verifier as first-class mutation surface |
+| `24-tool-router-e` | Axes B+E: tool router rebind + tool-edge \(E\) meter |
+| `25-checkpoint-recover` | Axes A+D: interrupt checkpoint → restore → resume |
 
 ## Live (not in run-all as live; offline stubs are)
 

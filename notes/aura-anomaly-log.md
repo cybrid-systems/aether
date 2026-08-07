@@ -626,3 +626,9 @@ export AURA_BIN=/home/dev/code/grok-dev/aether/../aura-grok/build/aura
 - [ ] Harness backoff only if true provider 429/quota (not host crash)
 - [x] Note: inv2 also shows host SIGSEGV + empty stats — primary track is Aura #2649 (H9–H12), not denseness
 - [ ] Do not open separate Aura issue for quota-only signals
+
+## Session open `20260805T215427+0800` (2026-08-05T13:54:27Z)
+
+- Aether `6f2a6b9` / Aura `78f890be`
+- Mode `live` hard_stop: clock window end (2026-08-06 08:00 CST)
+- Inv dir: `/home/dev/code/grok-dev/aether/notes/overnight-invocations` run log: `/home/dev/code/grok-dev/aether/notes/.overnight-run.log`

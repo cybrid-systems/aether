@@ -1,0 +1,194 @@
+; examples/24-tool-router-e/main.aura
+; Axes B + E: tool router as rebindable surface; tool-edge E metered.
+;
+; Pure-Aura tool dispatch (echo / count). Intentional tool-stub path marks
+; propose/tool-edge escapes without leaving decide/verify authority.
+;
+; Flow:
+;   A: baseline router echo+deny
+;   B: rebind router to admit count → commit
+;   C: poison router (always deny) → verify fail → rollback
+;   D: tool-stub edge increments escapes; core still pure on PASS path
+;   E: heal router; safety-ok
+;
+; Run: ./scripts/run-aura.sh examples/24-tool-router-e/main.aura
+
+(require "std/list" all:)
+(require "aether-min" all:)
+
+(aether:stats-reset!)
+
+(display "=== Aether 24-tool-router-e: router rebind + tool-edge E ===")
+(newline)
+
+(define body-echo
+  "(lambda (name) (if (equal? name \"echo\") \"ok\" \"deny\"))")
+(define body-echo-count
+  "(lambda (name) (if (or (equal? name \"echo\") (equal? name \"count\")) \"ok\" \"deny\"))")
+(define body-deny-all
+  "(lambda (name) \"deny\")")
+(define body-with-stub
+  "(lambda (name) (if (equal? name \"http-stub\") \"stub-ok\" (if (or (equal? name \"echo\") (equal? name \"count\")) \"ok\" \"deny\")))")
+
+(define installed #f)
+(define r-b #f)
+(define r-c #f)
+(define r-e #f)
+(define tool-escapes 0)
+(define stub-result #f)
+(define a-ok #f)
+(define b-ok #f)
+(define c-ok #f)
+(define d-ok #f)
+(define e-ok #f)
+(define all-ok #f)
+
+; Tool-edge invoke: pure path vs metered stub E (logical, no network).
+(define (tool-invoke name)
+  (if (equal? name "http-stub")
+    (begin
+      (aether:stats-bump! "escapes")
+      (set! tool-escapes (+ tool-escapes 1))
+      (router name))
+    (router name)))
+
+(set! installed
+  (aether:install-source
+    (string-append "(define router " body-echo ")")))
+
+(display "A echo=")
+(display (router "echo"))
+(display " count=")
+(display (router "count"))
+(newline)
+(set! a-ok
+  (and installed
+       (equal? (router "echo") "ok")
+       (equal? (router "count") "deny")))
+
+; ── B: widen router to admit count ──
+(set! r-b
+  (aether:loop-once
+    (lambda () (router "count"))
+    (lambda () #t)
+    "router"
+    body-echo-count
+    "admit-count"
+    (lambda ()
+      (and (equal? (router "echo") "ok")
+           (equal? (router "count") "ok")))))
+(display "B admit-count=")
+(write r-b)
+(newline)
+(set! b-ok
+  (and (eq? (aether:alist-ref ":decision" r-b #f) 'commit)
+       (equal? (tool-invoke "count") "ok")))
+
+; ── C: poison deny-all → rollback ──
+(set! r-c
+  (aether:loop-once
+    (lambda () (router "echo"))
+    (lambda () #t)
+    "router"
+    body-deny-all
+    "poison-deny"
+    (lambda () (equal? (router "echo") "ok"))))
+(display "C poison=")
+(write r-c)
+(newline)
+(display "C echo still=")
+(display (router "echo"))
+(newline)
+(set! c-ok
+  (and (eq? (aether:alist-ref ":decision" r-c #f) 'rollback)
+       (equal? (router "echo") "ok")
+       (equal? (router "count") "ok")))
+
+; ── D: install stub-capable router; tool-edge E on http-stub only ──
+(set! r-e
+  (aether:loop-once
+    (lambda () (router "echo"))
+    (lambda () #t)
+    "router"
+    body-with-stub
+    "admit-stub-edge"
+    (lambda ()
+      (and (equal? (router "echo") "ok")
+           (equal? (router "http-stub") "stub-ok")))))
+(display "D admit-stub=")
+(write r-e)
+(newline)
+(set! stub-result (tool-invoke "http-stub"))
+(display "D stub-result=")
+(display stub-result)
+(display " tool-escapes=")
+(display tool-escapes)
+(newline)
+(set! d-ok
+  (and (eq? (aether:alist-ref ":decision" r-e #f) 'commit)
+       (equal? stub-result "stub-ok")
+       (>= tool-escapes 1)
+       (>= (aether:stats-ref "escapes") 1)
+       ; pure tools do not bump escapes
+       (equal? (tool-invoke "echo") "ok")))
+
+; ── E: heal back to echo+count (no stub) ──
+(set! r-e
+  (aether:loop-once
+    (lambda () (router "echo"))
+    (lambda () #t)
+    "router"
+    body-echo-count
+    "heal-no-stub"
+    (lambda ()
+      (and (equal? (router "echo") "ok")
+           (equal? (router "count") "ok")
+           (equal? (router "http-stub") "deny")))))
+(display "E heal=")
+(write r-e)
+(newline)
+(set! e-ok
+  (and (eq? (aether:alist-ref ":decision" r-e #f) 'commit)
+       (equal? (router "http-stub") "deny")
+       (aether:safety-ok?)))
+
+(display "stats ")
+(write (aether:stats-alist))
+(newline)
+
+(set! all-ok
+  (and a-ok b-ok c-ok d-ok e-ok
+       (aether:safety-ok?)
+       (>= (aether:stats-ref "commits") 2)
+       (>= (aether:stats-ref "rollbacks") 1)
+       (>= (aether:stats-ref "escapes") 1)))
+
+(if all-ok
+  (begin
+    (display "PASS: tool-router rebind + tool-edge E metered (stub only)")
+    (newline)
+    (display "core pure on echo/count; escapes only on intentional http-stub")
+    (newline)
+    (display "RESULT pass example=24-tool-router-e escapes=")
+    (display (aether:stats-ref "escapes"))
+    (display " tool_escapes=")
+    (display tool-escapes)
+    (display " commits=")
+    (display (aether:stats-ref "commits"))
+    (newline))
+  (begin
+    (display "FAIL: tool-router-e checks")
+    (newline)
+    (display "  a=")
+    (display a-ok)
+    (display " b=")
+    (display b-ok)
+    (display " c=")
+    (display c-ok)
+    (display " d=")
+    (display d-ok)
+    (display " e=")
+    (display e-ok)
+    (newline)
+    (display "RESULT fail example=24-tool-router-e")
+    (newline)))
